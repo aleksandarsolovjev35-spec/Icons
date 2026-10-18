@@ -2,25 +2,109 @@
   "comment": "The icon set. Key = path under icons/, raw = file stem in src/masters/. Add a row, drop the artwork into src/raw/, run tools/build_icons.py. Icons marked as planned still need their artwork: the camera is chosen per item, so every subject gets its own candidates.",
   "style": "posterised digital art, camera chosen per item, neutral master coloured by rarity",
   "icons": {
-    "consumables/flask-potion": { "raw": "flask-potion", "label": "Potion flask", "planned": true },
-    "consumables/scroll": { "raw": "scroll", "label": "Scroll", "planned": true },
-    "consumables/vial": { "raw": "vial", "label": "Vial", "planned": true },
-    "consumables/bottle": { "raw": "bottle", "label": "Bottle", "planned": true },
-    "adventuring/torch": { "raw": "torch", "label": "Torch", "planned": true },
-    "adventuring/book": { "raw": "book", "label": "Book", "planned": true },
-    "adventuring/lantern": { "raw": "lantern", "label": "Lantern", "planned": true },
-    "adventuring/rope": { "raw": "rope", "label": "Rope", "planned": true },
-    "containers/chest": { "raw": "chest", "label": "Chest", "planned": true },
-    "containers/backpack": { "raw": "backpack", "label": "Backpack", "planned": true },
-    "containers/sack": { "raw": "sack", "label": "Sack", "planned": true },
-    "treasure/coin-stack": { "raw": "coin-stack", "label": "Coins", "planned": true },
-    "treasure/gem": { "raw": "gem", "label": "Gem", "planned": true },
-    "treasure/ring": { "raw": "ring", "label": "Ring", "planned": true },
-    "treasure/ingot": { "raw": "ingot", "label": "Ingot", "planned": true },
-    "materials/ore": { "raw": "ore", "label": "Ore", "planned": true },
-    "nature/mushroom": { "raw": "mushroom", "label": "Mushroom", "planned": true },
-    "food/bread": { "raw": "bread", "label": "Bread", "planned": true },
-    "weapons/sword": { "raw": "sword", "label": "Sword", "planned": true },
-    "armor/helmet": { "raw": "helmet", "label": "Helmet", "planned": true }
+    "adventuring/book": {
+      "raw": "book",
+      "label": "Book",
+      "planned": true
+    },
+    "adventuring/lantern": {
+      "raw": "lantern",
+      "label": "Lantern",
+      "planned": true
+    },
+    "adventuring/rope": {
+      "raw": "rope",
+      "label": "Rope",
+      "planned": true
+    },
+    "adventuring/torch": {
+      "raw": "torch",
+      "label": "Torch",
+      "planned": true
+    },
+    "armor/helmet": {
+      "raw": "helmet",
+      "label": "Helmet",
+      "planned": true
+    },
+    "consumables/bottle": {
+      "raw": "bottle",
+      "label": "Bottle",
+      "planned": true
+    },
+    "consumables/flask-potion": {
+      "raw": "flask-potion",
+      "label": "Potion flask",
+      "planned": true
+    },
+    "consumables/scroll": {
+      "raw": "scroll",
+      "label": "Scroll",
+      "planned": true
+    },
+    "consumables/vial": {
+      "raw": "vial",
+      "label": "Vial",
+      "planned": true
+    },
+    "containers/backpack": {
+      "raw": "backpack",
+      "label": "Backpack",
+      "planned": true
+    },
+    "containers/chest": {
+      "raw": "chest",
+      "label": "Chest",
+      "planned": true
+    },
+    "containers/sack": {
+      "raw": "sack",
+      "label": "Sack",
+      "planned": true
+    },
+    "food/bread": {
+      "raw": "bread",
+      "label": "Bread",
+      "planned": true
+    },
+    "magic/mummified-hand": {
+      "raw": "mummified-hand",
+      "label": "Mummified goblin hand"
+    },
+    "materials/ore": {
+      "raw": "ore",
+      "label": "Ore",
+      "planned": true
+    },
+    "nature/mushroom": {
+      "raw": "mushroom",
+      "label": "Mushroom",
+      "planned": true
+    },
+    "treasure/coin-stack": {
+      "raw": "coin-stack",
+      "label": "Coins",
+      "planned": true
+    },
+    "treasure/gem": {
+      "raw": "gem",
+      "label": "Gem",
+      "planned": true
+    },
+    "treasure/ingot": {
+      "raw": "ingot",
+      "label": "Ingot",
+      "planned": true
+    },
+    "treasure/ring": {
+      "raw": "ring",
+      "label": "Ring",
+      "planned": true
+    },
+    "weapons/sword": {
+      "raw": "sword",
+      "label": "Sword",
+      "planned": true
+    }
   }
 }
