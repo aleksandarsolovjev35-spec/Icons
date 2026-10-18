@@ -1,26 +1,89 @@
 {
   "comment": "The icon set. Key = path under icons/, raw = file stem in src/raw/. Add a row, drop the generated PNG into src/raw/, run tools/build_icons.py. Icons marked as planned still need their artwork.",
-  "style": "posterised digital art, dynamic diagonal tilt",
+  "style": "posterised digital art, camera chosen per item, neutral master coloured by rarity",
   "icons": {
-    "consumables/flask-potion": { "raw": "flask-potion", "label": "Potion flask" },
-    "consumables/scroll": { "raw": "scroll", "label": "Scroll" },
-    "consumables/vial": { "raw": "vial", "label": "Vial", "planned": true },
-    "consumables/bottle": { "raw": "bottle", "label": "Bottle", "planned": true },
-    "adventuring/torch": { "raw": "torch", "label": "Torch" },
-    "adventuring/book": { "raw": "book", "label": "Book", "planned": true },
-    "adventuring/lantern": { "raw": "lantern", "label": "Lantern", "planned": true },
-    "adventuring/rope": { "raw": "rope", "label": "Rope", "planned": true },
-    "containers/chest": { "raw": "chest", "label": "Chest" },
-    "containers/backpack": { "raw": "backpack", "label": "Backpack", "planned": true },
-    "containers/sack": { "raw": "sack", "label": "Sack", "planned": true },
-    "treasure/coin-stack": { "raw": "coin-stack", "label": "Coins" },
-    "treasure/gem": { "raw": "gem", "label": "Gem" },
-    "treasure/ring": { "raw": "ring", "label": "Ring" },
-    "treasure/ingot": { "raw": "ingot", "label": "Ingot", "planned": true },
-    "materials/ore": { "raw": "ore", "label": "Ore", "planned": true },
-    "nature/mushroom": { "raw": "mushroom", "label": "Mushroom" },
-    "food/bread": { "raw": "bread", "label": "Bread", "planned": true },
-    "weapons/sword": { "raw": "sword", "label": "Sword" },
-    "armor/helmet": { "raw": "helmet", "label": "Helmet" }
+    "consumables/flask-potion": {
+      "raw": "flask-potion",
+      "label": "Potion flask"
+    },
+    "consumables/scroll": {
+      "raw": "scroll",
+      "label": "Scroll"
+    },
+    "consumables/vial": {
+      "raw": "vial",
+      "label": "Vial",
+      "planned": true
+    },
+    "consumables/bottle": {
+      "raw": "bottle",
+      "label": "Bottle"
+    },
+    "adventuring/torch": {
+      "raw": "torch",
+      "label": "Torch"
+    },
+    "adventuring/book": {
+      "raw": "book",
+      "label": "Book",
+      "planned": true
+    },
+    "adventuring/lantern": {
+      "raw": "lantern",
+      "label": "Lantern"
+    },
+    "adventuring/rope": {
+      "raw": "rope",
+      "label": "Rope"
+    },
+    "containers/chest": {
+      "raw": "chest",
+      "label": "Chest"
+    },
+    "containers/backpack": {
+      "raw": "backpack",
+      "label": "Backpack",
+      "planned": true
+    },
+    "containers/sack": {
+      "raw": "sack",
+      "label": "Sack"
+    },
+    "treasure/coin-stack": {
+      "raw": "coin-stack",
+      "label": "Coins"
+    },
+    "treasure/gem": {
+      "raw": "gem",
+      "label": "Gem"
+    },
+    "treasure/ring": {
+      "raw": "ring",
+      "label": "Ring"
+    },
+    "treasure/ingot": {
+      "raw": "ingot",
+      "label": "Ingot"
+    },
+    "materials/ore": {
+      "raw": "ore",
+      "label": "Ore"
+    },
+    "nature/mushroom": {
+      "raw": "mushroom",
+      "label": "Mushroom"
+    },
+    "food/bread": {
+      "raw": "bread",
+      "label": "Bread"
+    },
+    "weapons/sword": {
+      "raw": "sword",
+      "label": "Sword"
+    },
+    "armor/helmet": {
+      "raw": "helmet",
+      "label": "Helmet"
+    }
   }
 }

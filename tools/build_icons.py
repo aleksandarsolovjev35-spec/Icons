@@ -28,6 +28,7 @@ from PIL import Image  # noqa: E402
 
 ROOT = Path(__file__).resolve().parent.parent
 RAW = ROOT / "src" / "raw"
+MASTERS = ROOT / "src" / "masters"
 ICONS = ROOT / "icons"
 
 MASTER = 512
@@ -104,12 +105,19 @@ def desaturate(img: Image.Image) -> Image.Image:
 def build(icon_id: str, entry: dict, make_svg: bool = True, flat: bool = False,
           neutral: bool = True) -> bool:
     source = RAW / f"{entry['raw']}.png"
-    if not source.exists():
-        print(f"  skip {icon_id}: no {source.relative_to(ROOT)}")
-        return False
-
-    with Image.open(source) as img:
-        master = normalise(cut(img), size=MASTER)
+    if source.exists():
+        with Image.open(source) as img:
+            master = normalise(cut(img), size=MASTER)
+    else:
+        # No original on hand: fall back to the tracked master, which is
+        # already cut, scaled and neutral. Everything downstream still runs.
+        fallback = MASTERS / f"{entry['raw']}.png"
+        if not fallback.exists():
+            print(f"  skip {icon_id}: no {source.relative_to(ROOT)}")
+            return False
+        with Image.open(fallback) as img:
+            master = img.convert("RGBA")
+        print(f"  {icon_id}: rebuilt from the tracked master")
 
     if flat:
         master = posterise(master, PALETTE)
@@ -119,6 +127,11 @@ def build(icon_id: str, entry: dict, make_svg: bool = True, flat: bool = False,
     target = ICONS / f"{icon_id}.png"
     target.parent.mkdir(parents=True, exist_ok=True)
     master.save(target, optimize=True)
+
+    # The master is the source of truth for the artwork and is kept in git,
+    # so the set can always be rebuilt without the generated originals.
+    MASTERS.mkdir(parents=True, exist_ok=True)
+    master.save(MASTERS / f"{entry['raw']}.png", optimize=True)
 
     master.resize((EXPORT, EXPORT), Image.LANCZOS).save(
         ICONS / f"{icon_id}.webp", "WEBP", quality=92, method=6, exact=True

@@ -12,3 +12,7 @@ preview/
 
 # style bake-off originals
 src/styles/
+
+# The cut masters in src/masters/ are tracked on purpose: they are the
+# artwork sources, and the set has to be rebuildable without the 1024px
+# originals.
