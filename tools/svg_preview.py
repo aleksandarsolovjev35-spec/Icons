@@ -17,7 +17,7 @@ import sys
 import xml.etree.ElementTree as ET
 from pathlib import Path
 
-from PIL import Image, ImageDraw
+from PIL import Image, ImageChops, ImageDraw
 
 BEZIER_STEPS = 12
 
@@ -123,16 +123,25 @@ def render(svg_path: Path, out_path: Path, size: int = 512, background=(0, 0, 0,
         tsx, tsy, ttx, tty = parse_transform(element.get("transform"))
 
         layer = Image.new("RGBA", (size, size), (0, 0, 0, 0))
-        draw = ImageDraw.Draw(layer)
         scale_x = size / width
         scale_y = size / height
+
+        # a path may carry several subpaths that wind around each other; the
+        # holes only survive if the subpaths are combined instead of filled
+        # one by one, so they are combined with the even-odd rule
+        mask = Image.new("L", (size, size), 0)
         for points in parse_path(d):
             scaled = [
                 (px * tsx * scale_x + ttx * scale_x, py * tsy * scale_y + tty * scale_y)
                 for px, py in points
             ]
-            if len(scaled) >= 3:
-                draw.polygon(scaled, fill=colour + (int(255 * opacity),))
+            if len(scaled) < 3:
+                continue
+            piece = Image.new("L", (size, size), 0)
+            ImageDraw.Draw(piece).polygon(scaled, fill=255)
+            mask = ImageChops.difference(mask, piece)
+
+        layer.paste(colour + (int(255 * opacity),), (0, 0), mask)
         canvas.alpha_composite(layer)
 
     canvas.save(out_path)

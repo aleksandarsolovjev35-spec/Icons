@@ -52,7 +52,8 @@ def main() -> int:
         y = PAD + row * cell_h
 
         with Image.open(path) as img:
-            art = normalise(cut(img), size=BIG)
+            # line art is a stroke, not a filled shape: keep the inside empty
+            art = normalise(cut(img, fill_interior="ink-line" not in path.stem), size=BIG)
 
         draw.rounded_rectangle([x, y, x + BIG, y + BIG], radius=8, fill=PANEL)
         canvas.alpha_composite(art, (x, y))

@@ -44,6 +44,33 @@ TRACE = dict(
     layer_difference=8,
 )
 
+# how many colours the artwork is reduced to before it is traced
+PALETTE = 6
+
+
+def posterise(img: Image.Image, colours: int = PALETTE) -> Image.Image:
+    """Reduce the artwork to a handful of flat colours.
+
+    The tracer gives every facet its own slightly different hex, which both
+    bloats the vector and makes the colours impossible to recolour. Collapsing
+    them first keeps the paths and the palette under control.
+    """
+    rgb = img.convert("RGB")
+    alpha = img.getchannel("A")
+
+    # paint the transparent area with the average colour of the subject, so it
+    # does not drag the palette towards black
+    visible = alpha.point(lambda a: 255 if a > 8 else 0)
+    if visible.getbbox() is None:
+        return img
+    flat = Image.new("RGB", img.size, rgb.getpixel(visible.getbbox()[:2]))
+    flat.paste(rgb, mask=visible)
+
+    quantised = flat.quantize(colors=colours, method=Image.Quantize.FASTOCTREE).convert("RGB")
+    result = quantised.convert("RGBA")
+    result.putalpha(alpha)
+    return result
+
 
 def trace_svg(png: Path, svg: Path) -> int:
     """Raster -> vector. Returns the number of paths in the result."""
@@ -76,7 +103,10 @@ def build(icon_id: str, entry: dict, make_svg: bool = True) -> bool:
 
     paths = 0
     if make_svg:
-        paths = trace_svg(target, ICONS / f"{icon_id}.svg")
+        flat = ICONS / f"{icon_id}.flat.png"
+        posterise(master, PALETTE).save(flat)
+        paths = trace_svg(flat, ICONS / f"{icon_id}.svg")
+        flat.unlink()
 
     size = target.stat().st_size / 1024
     svg_size = (ICONS / f"{icon_id}.svg").stat().st_size / 1024 if paths else 0

@@ -89,8 +89,13 @@ def _is_flat_white(mask: np.ndarray, rgb: np.ndarray) -> bool:
     )
 
 
-def cut(source: Path | Image.Image) -> Image.Image:
-    """Cut a subject out of its white studio background."""
+def cut(source: Path | Image.Image, fill_interior: bool = True) -> Image.Image:
+    """Cut a subject out of its white studio background.
+
+    fill_interior keeps enclosed bright regions opaque (white paper, a glass
+    body). Line art needs the opposite: the shape is a stroke and everything
+    inside it stays transparent.
+    """
     img = Image.open(source) if isinstance(source, (str, Path)) else source
     if img.mode != "RGBA":
         img = img.convert("RGBA")
@@ -117,8 +122,9 @@ def cut(source: Path | Image.Image) -> Image.Image:
 
     # 3. silhouette: the object plus the painted surface it encloses
     silhouette = (~bg) & (~gaps)
-    silhouette = ndimage.binary_closing(silhouette, iterations=2)
-    silhouette = ndimage.binary_fill_holes(silhouette) & (~gaps)
+    if fill_interior:
+        silhouette = ndimage.binary_closing(silhouette, iterations=2)
+        silhouette = ndimage.binary_fill_holes(silhouette) & (~gaps)
 
     # 4. inside the silhouette the icon is solid; only the outer fringe is soft
     alpha = np.where(silhouette, 1.0, alpha)
