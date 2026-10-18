@@ -33,15 +33,19 @@ ICONS = ROOT / "icons"
 MASTER = 512
 EXPORT = 200
 
-# tracing parameters, tuned for flat artwork
+# Tracing parameters. The artwork is posterised to a handful of flat colours
+# first, and the tracer is then run aggressively: smooth gradients in the
+# original otherwise turn into hundreds of tiny paths, and the posterised
+# hard edges need a generous speckle filter to stay clean.
 TRACE = dict(
     colormode="color",
-    filter_speckle=4,
-    corner_threshold=60,
-    length_threshold=4.0,
+    filter_speckle=48,
+    corner_threshold=180,
+    length_threshold=10.0,
+    splice_threshold=90,
+    layer_difference=32,
     max_iterations=10,
-    splice_threshold=45,
-    layer_difference=8,
+    path_precision=1,
 )
 
 # how many colours the artwork is reduced to before it is traced
@@ -84,7 +88,7 @@ def trace_svg(png: Path, svg: Path) -> int:
     return svg.read_text(encoding="utf-8").count("<path")
 
 
-def build(icon_id: str, entry: dict, make_svg: bool = True) -> bool:
+def build(icon_id: str, entry: dict, make_svg: bool = True, flat: bool = False) -> bool:
     source = RAW / f"{entry['raw']}.png"
     if not source.exists():
         print(f"  skip {icon_id}: no {source.relative_to(ROOT)}")
@@ -92,6 +96,9 @@ def build(icon_id: str, entry: dict, make_svg: bool = True) -> bool:
 
     with Image.open(source) as img:
         master = normalise(cut(img), size=MASTER)
+
+    if flat:
+        master = posterise(master, PALETTE)
 
     target = ICONS / f"{icon_id}.png"
     target.parent.mkdir(parents=True, exist_ok=True)
@@ -118,6 +125,8 @@ def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--only", help="build a single icon id")
     ap.add_argument("--no-svg", action="store_true")
+    ap.add_argument("--flat", action="store_true",
+                    help="also flatten the master PNG to the trace palette")
     args = ap.parse_args()
 
     library = json.loads((ROOT / "library.json").read_text(encoding="utf-8"))["icons"]
@@ -126,7 +135,7 @@ def main() -> int:
     for icon_id, entry in sorted(library.items()):
         if args.only and icon_id != args.only:
             continue
-        if build(icon_id, entry, make_svg=not args.no_svg):
+        if build(icon_id, entry, make_svg=not args.no_svg, flat=args.flat):
             built += 1
 
     print(f"\nbuilt {built} icon(s)")
