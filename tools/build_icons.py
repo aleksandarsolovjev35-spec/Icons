@@ -88,7 +88,21 @@ def trace_svg(png: Path, svg: Path) -> int:
     return svg.read_text(encoding="utf-8").count("<path")
 
 
-def build(icon_id: str, entry: dict, make_svg: bool = True, flat: bool = False) -> bool:
+def desaturate(img: Image.Image) -> Image.Image:
+    """Strip the colour, keep the alpha.
+
+    The icon is the shape; the colour is the rarity, and it is applied at
+    runtime. A neutral master also means one artwork covers every rarity
+    instead of one drawing per material.
+    """
+    alpha = img.getchannel("A")
+    grey = img.convert("L").convert("RGB").convert("RGBA")
+    grey.putalpha(alpha)
+    return grey
+
+
+def build(icon_id: str, entry: dict, make_svg: bool = True, flat: bool = False,
+          neutral: bool = True) -> bool:
     source = RAW / f"{entry['raw']}.png"
     if not source.exists():
         print(f"  skip {icon_id}: no {source.relative_to(ROOT)}")
@@ -99,6 +113,8 @@ def build(icon_id: str, entry: dict, make_svg: bool = True, flat: bool = False) 
 
     if flat:
         master = posterise(master, PALETTE)
+    if neutral:
+        master = desaturate(master)
 
     target = ICONS / f"{icon_id}.png"
     target.parent.mkdir(parents=True, exist_ok=True)
@@ -127,6 +143,8 @@ def main() -> int:
     ap.add_argument("--no-svg", action="store_true")
     ap.add_argument("--flat", action="store_true",
                     help="also flatten the master PNG to the trace palette")
+    ap.add_argument("--colour", action="store_true",
+                    help="keep the material colours instead of shipping a neutral master")
     args = ap.parse_args()
 
     library = json.loads((ROOT / "library.json").read_text(encoding="utf-8"))["icons"]
@@ -135,7 +153,8 @@ def main() -> int:
     for icon_id, entry in sorted(library.items()):
         if args.only and icon_id != args.only:
             continue
-        if build(icon_id, entry, make_svg=not args.no_svg, flat=args.flat):
+        if build(icon_id, entry, make_svg=not args.no_svg, flat=args.flat,
+                 neutral=not args.colour):
             built += 1
 
     print(f"\nbuilt {built} icon(s)")
