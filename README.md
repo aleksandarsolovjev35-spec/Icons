@@ -48,14 +48,30 @@ https://raw.githubusercontent.com/aleksandarsolovjev35-spec/Icons/main/manifest.
 // назначить иконки всем предметам мира (актёры + items)
 await LootIcons.assignAll();
 
+// то же, но ещё и по всем компендиумам (медленно, зато полно)
+await LootIcons.assignAll({ compendiums: true });
+
 // назначить иконку конкретному предмету
 await LootIcons.assignToItem(actor.items.get("abc123"));
 
+// открыть пикер архетипов для предмета
+await LootIcons.pickIcon(actor.items.get("abc123"));
+
 // посмотреть, что вообще есть в библиотеке
 LootIcons.list("treasure");  // -> [{ id, path }, ...]
+LootIcons.categories();       // -> [{ id, label, icons: [...] }, ...]
 ```
 
 Иконки видны и в штатном пикере файлов Foundry — на вкладке модуля.
+
+### В интерфейсе
+
+* На **листе персонажа** — кнопка с волшебной палочкой проставляет иконки всем
+  предметам инвентаря.
+* На **листе предмета** — кнопка с картинками открывает пикер архетипов:
+  сетка иконок по категориям, клик — и предмет получает выбранную иконку.
+* Редкость подсвечивает иконку прямо в инвентаре (зелёный / синий / фиолетовый /
+  золотой / красный).
 
 ## Как это устроено
 
@@ -64,9 +80,11 @@ manifest.json          манифест модуля
 icons/<категория>/*.webp   сами иконки
 data/icons.json        сгенерированный индекс библиотеки
 data/rules.json        словарь: exact / keywords / type
-scripts/module.js      хуки, автоприсвоение, подсветка редкости
+scripts/module.js      хуки, автоприсвоение, пикер, подсветка редкости
 scripts/matcher.js     чистая логика подбора (тестируется без Foundry)
 styles/loot-icons.css  подсветка редкости
+styles/icon-picker.css стили пикера
+templates/             шаблон пикера
 docs/STYLE-GUIDE.md    промпт-шаблон и постобработка
 docs/TAXONOMY.md       категории и правила именования
 tools/                 пайплайн сборки библиотеки

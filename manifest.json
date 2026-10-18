@@ -17,7 +17,8 @@
     "scripts/module.js"
   ],
   "styles": [
-    "styles/loot-icons.css"
+    "styles/loot-icons.css",
+    "styles/icon-picker.css"
   ],
   "languages": [
     {

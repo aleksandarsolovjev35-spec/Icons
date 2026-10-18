@@ -1,6 +1,6 @@
-/* global Hooks, game, foundry, CONFIG, MutationObserver, FormApplication */
+/* global Hooks, game, foundry, CONFIG, ui, Dialog, renderTemplate, MutationObserver, FormApplication */
 
-import { normalise, resolveIcon } from "./matcher.js";
+import { resolveIcon } from "./matcher.js";
 
 /**
  * Loot Icons for D&D 5e
@@ -62,18 +62,20 @@ function iconPath(id) {
 async function loadLibrary() {
   if (library) return library;
   if (!libraryPromise) {
-    libraryPromise = fetch(`modules/${MODULE_ID}/data/icons.json`)
-      .then(response => {
-        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    const get = path =>
+      fetch(`modules/${MODULE_ID}/${path}`).then(response => {
+        if (!response.ok) throw new Error(`${path}: HTTP ${response.status}`);
         return response.json();
-      })
-      .then(data => {
-        library = data;
-        return data;
+      });
+
+    libraryPromise = Promise.all([get("data/icons.json"), get("data/rules.json")])
+      .then(([icons, rules]) => {
+        library = { icons: icons.icons ?? {}, categories: icons.categories ?? {}, rules: rules ?? {} };
+        return library;
       })
       .catch(error => {
         console.error(`${MODULE_ID} | could not load the icon library`, error);
-        library = { icons: {}, rules: { exact: {}, keywords: [], type: {} } };
+        library = { icons: {}, categories: {}, rules: { exact: {}, keywords: [], type: {} } };
         return library;
       });
   }
@@ -98,10 +100,67 @@ async function assignToItem(item) {
 
 /** assign icons to every item of an actor */
 async function assignToActor(actor) {
-  if (!actor) return;
+  if (!actor) return 0;
+  let count = 0;
   for (const item of actor.items ?? []) {
+    const before = item.img;
     await assignToItem(item);
+    if (item.img !== before) count += 1;
   }
+  return count;
+}
+
+/** group the library by category, ready for the picker */
+function libraryCategories() {
+  const categories = new Map();
+  for (const [id, path] of Object.entries(library?.icons ?? {})) {
+    const category = id.includes("/") ? id.split("/")[0] : "misc";
+    if (!categories.has(category)) categories.set(category, []);
+    categories.get(category).push({
+      id,
+      path: `modules/${MODULE_ID}/${path}`,
+      label: id.split("/").pop()
+    });
+  }
+  return [...categories.entries()]
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([id, icons]) => ({ id, label: id, icons }));
+}
+
+/**
+ * Open the archetype picker for a document.
+ * @param {Document} document  the item to change
+ */
+async function pickIcon(document) {
+  if (!document) return;
+  await loadLibrary();
+
+  const content = await renderTemplate(
+    `modules/${MODULE_ID}/templates/icon-picker.hbs`,
+    { categories: libraryCategories() }
+  );
+
+  const dialog = new Dialog({
+    title: game.i18n.localize("LOOTICONS.Preview"),
+    content: `<div class="loot-picker-body">${content}</div>`,
+    classes: ["loot-picker-dialog"],
+    buttons: {
+      cancel: {
+        label: game.i18n.localize("Cancel"),
+        callback: () => null
+      }
+    },
+    default: "cancel"
+  });
+
+  dialog.render(true);
+  const root = dialog.element?.[0] ?? dialog.element;
+  root?.addEventListener("click", async event => {
+    const entry = event.target.closest(".loot-picker-entry");
+    if (!entry) return;
+    await document.update({ img: `modules/${MODULE_ID}/icons/${entry.dataset.icon}.webp` });
+    dialog.close();
+  });
 }
 
 /* -------------------------------------------------------- rarity highlight */
@@ -158,6 +217,42 @@ function watchSheet(app, html) {
   observers.set(root, observer);
 }
 
+/** the DOM element of a rendered sheet, across Foundry versions */
+function sheetElement(app, html) {
+  return html?.[0] ?? app?.element?.[0] ?? app?.element ?? null;
+}
+
+/** find (or create) the button row of a sheet header */
+function headerActions(root) {
+  if (!root) return null;
+  let actions = root.querySelector(".sheet-header .header-actions");
+  if (!actions) {
+    const header = root.querySelector(".sheet-header");
+    if (!header) return null;
+    actions = document.createElement("div");
+    actions.className = "header-actions";
+    header.appendChild(actions);
+  }
+  return actions;
+}
+
+/** add a small icon button to a sheet header */
+function addHeaderButton(root, { icon, title, onClick }) {
+  const actions = headerActions(root);
+  if (!actions) return;
+  if (actions.querySelector(`.loot-icons-button[data-icon="${icon}"]`)) return;
+
+  const button = document.createElement("button");
+  button.type = "button";
+  button.className = "loot-icons-button";
+  button.dataset.icon = icon;
+  button.title = title;
+  button.setAttribute("aria-label", title);
+  button.innerHTML = `<i class="fas ${icon}"></i>`;
+  button.addEventListener("click", onClick);
+  actions.prepend(button);
+}
+
 /* --------------------------------------------------------------- settings */
 
 function registerSettings() {
@@ -195,9 +290,15 @@ globalThis.LootIcons = {
   resolveIcon: item => resolveIcon(item, library ?? { icons: {}, rules: {} }),
   assignToItem,
   assignToActor,
+  pickIcon,
+  categories: libraryCategories,
 
-  /** batch: every actor in the world + every world item */
-  async assignAll() {
+  /**
+   * Batch assignment.
+   * @param {object}  options
+   * @param {boolean} options.compendiums  also walk every compendium
+   */
+  async assignAll({ compendiums = false } = {}) {
     let count = 0;
     for (const actor of game.actors ?? []) {
       for (const item of actor.items ?? []) {
@@ -210,6 +311,18 @@ globalThis.LootIcons = {
       const before = item.img;
       await assignToItem(item);
       if (item.img !== before) count += 1;
+    }
+
+    if (compendiums) {
+      for (const pack of game.packs ?? []) {
+        if (!pack.metadata?.type || pack.metadata.type !== "Item") continue;
+        const documents = pack.documentName === "Item" ? await pack.getDocuments() : [];
+        for (const item of documents) {
+          const before = item.img;
+          await assignToItem(item);
+          if (item.img !== before) count += 1;
+        }
+      }
     }
     return count;
   },
@@ -249,6 +362,38 @@ Hooks.on("createActor", (actor, options, userId) => {
   assignToActor(actor);
 });
 
-Hooks.on("renderActorSheet", (app, html) => watchSheet(app, html));
-Hooks.on("renderItemSheet", (app, html) => watchSheet(app, html));
-Hooks.on("renderActorSheetV2", (app, html) => watchSheet(app, html));
+Hooks.on("renderActorSheet", (app, html) => {
+  watchSheet(app, html);
+  const root = sheetElement(app, html);
+  addHeaderButton(root, {
+    icon: "fa-wand-magic-sparkles",
+    title: game.i18n.localize("LOOTICONS.AssignAll"),
+    onClick: async () => {
+      const count = await assignToActor(app.document);
+      ui.notifications?.info(game.i18n.format("LOOTICONS.Assigned", { count }));
+    }
+  });
+});
+
+Hooks.on("renderItemSheet", (app, html) => {
+  watchSheet(app, html);
+  const root = sheetElement(app, html);
+  addHeaderButton(root, {
+    icon: "fa-images",
+    title: game.i18n.localize("LOOTICONS.Preview"),
+    onClick: () => pickIcon(app.document)
+  });
+});
+
+Hooks.on("renderActorSheetV2", (app, html) => {
+  watchSheet(app, html);
+  const root = sheetElement(app, html);
+  addHeaderButton(root, {
+    icon: "fa-wand-magic-sparkles",
+    title: game.i18n.localize("LOOTICONS.AssignAll"),
+    onClick: async () => {
+      const count = await assignToActor(app.document);
+      ui.notifications?.info(game.i18n.format("LOOTICONS.Assigned", { count }));
+    }
+  });
+});

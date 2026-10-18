@@ -1,0 +1,61 @@
+/* Loot Icons for D&D 5e — the icon picker dialog. */
+
+.loot-picker-dialog .window-content {
+  padding: 0;
+}
+
+.loot-picker-dialog .loot-picker-body {
+  max-height: 60vh;
+  overflow-y: auto;
+  padding: 12px;
+}
+
+.loot-picker-category {
+  margin-bottom: 18px;
+}
+
+.loot-picker-heading {
+  margin: 0 0 8px;
+  font-size: 13px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  opacity: 0.7;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.25);
+  padding-bottom: 4px;
+}
+
+.loot-picker-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(84px, 1fr));
+  gap: 8px;
+}
+
+.loot-picker-entry {
+  margin: 0;
+  padding: 6px 4px 4px;
+  border-radius: 6px;
+  text-align: center;
+  cursor: pointer;
+  border: 1px solid transparent;
+  transition: background 120ms ease, border-color 120ms ease;
+}
+
+.loot-picker-entry:hover {
+  background: rgba(0, 0, 0, 0.08);
+  border-color: rgba(0, 0, 0, 0.2);
+}
+
+.loot-picker-entry img {
+  width: 64px;
+  height: 64px;
+  object-fit: contain;
+  display: block;
+  margin: 0 auto 4px;
+}
+
+.loot-picker-entry figcaption {
+  font-size: 11px;
+  line-height: 1.2;
+  opacity: 0.8;
+  word-break: break-word;
+}

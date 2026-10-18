@@ -62,6 +62,7 @@ def check_rules(rules: dict, icons: dict[str, str]) -> list[str]:
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--check", action="store_true", help="only validate, do not write")
+    ap.add_argument("--strict", action="store_true", help="also fail when a rule points at a missing icon")
     args = ap.parse_args()
 
     icons = scan_icons()
@@ -99,13 +100,17 @@ def main() -> int:
         for p in size_problems:
             print(f"  {p}", file=sys.stderr)
     if rule_problems:
-        print("\nrule problems:", file=sys.stderr)
+        print("\nrule warnings (icon not built yet):", file=sys.stderr)
         for p in rule_problems:
             print(f"  {p}", file=sys.stderr)
     if not args.check:
         print(f"\nwrote {out.relative_to(ROOT)}")
 
-    return 1 if (size_problems or rule_problems) else 0
+    if size_problems:
+        return 1
+    if rule_problems and args.strict:
+        return 1
+    return 0
 
 
 if __name__ == "__main__":
