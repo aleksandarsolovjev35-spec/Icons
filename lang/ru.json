@@ -1,0 +1,8 @@
+{
+  "LOOTICONS.AssignAll": "Назначить иконки всем предметам в мире",
+  "LOOTICONS.AssignAllHint": "Обходит всех актёров и все предметы мира, заменяя системные заглушки иконками библиотеки.",
+  "LOOTICONS.Assigned": "Loot Icons: обновлено предметов — {count}",
+  "LOOTICONS.NoData": "Loot Icons: библиотека иконок пуста",
+  "LOOTICONS.Category": "Категория",
+  "LOOTICONS.Preview": "Превью"
+}

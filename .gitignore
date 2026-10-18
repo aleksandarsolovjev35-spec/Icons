@@ -1,0 +1,14 @@
+# python
+.venv/
+__pycache__/
+*.pyc
+
+# model weights / caches
+.models/
+*.onnx
+
+# raw generator output (reproducible, large)
+src/raw/
+
+# preview sheets
+preview/

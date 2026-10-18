@@ -1,0 +1,8 @@
+{
+  "LOOTICONS.AssignAll": "Assign library icons to every item in the world",
+  "LOOTICONS.AssignAllHint": "Walks every actor and every world item and replaces placeholder icons with library icons.",
+  "LOOTICONS.Assigned": "Loot Icons: {count} item(s) updated",
+  "LOOTICONS.NoData": "Loot Icons: icon library is empty",
+  "LOOTICONS.Category": "Category",
+  "LOOTICONS.Preview": "Preview"
+}

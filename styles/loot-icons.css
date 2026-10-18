@@ -1,0 +1,32 @@
+/* Loot Icons for D&D 5e — runtime rarity highlighting.
+ *
+ * The library ships neutral artwork; rarity is expressed here so that adding
+ * a new rarity never requires redrawing the icons.
+ */
+
+.item[data-rarity="uncommon"] { --loot-rarity: #6fcf5b; }
+.item[data-rarity="rare"] { --loot-rarity: #4aa3ff; }
+.item[data-rarity="very-rare"] { --loot-rarity: #b47cff; }
+.item[data-rarity="legendary"] { --loot-rarity: #ffb03a; }
+.item[data-rarity="artifact"] { --loot-rarity: #ff6b4a; }
+.item[data-rarity="cursed"] { --loot-rarity: #8b3fa8; }
+
+/* the icon itself gets a soft coloured glow */
+.item[data-rarity]:not([data-rarity="common"]) img {
+  filter: drop-shadow(0 0 3px var(--loot-rarity, transparent));
+}
+
+/* ...and the name picks up a matching halo */
+.item[data-rarity]:not([data-rarity="common"]) .item-name {
+  text-shadow: 0 0 6px var(--loot-rarity, transparent);
+}
+
+/* compendium and directory lists */
+.directory-item[data-rarity]:not([data-rarity="common"]) img {
+  filter: drop-shadow(0 0 3px var(--loot-rarity, transparent));
+}
+
+/* honour the client's "reduce motion" / high contrast preferences */
+@media (prefers-reduced-motion: reduce) {
+  .item[data-rarity] img { transition: none !important; }
+}
