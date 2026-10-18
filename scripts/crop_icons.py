@@ -26,8 +26,8 @@ icons. Files are arranged as:
   <source folder>/<source image name without extension>/icon_001.jpg ... icon_050.jpg
 
 Tile order is left-to-right, then top-to-bottom. The frame was included in the
-crop, and a 4-pixel band around each tile's edge was painted black. Unframed
-sheets are not included and were left unchanged in the repository. Original
+crop, its edge was painted black, and dark neutral compression fringes were
+removed. Unframed sheets are not included and were left unchanged. Original
 sheets are also left unchanged.
 """
 
@@ -70,10 +70,11 @@ def load_pixels(path: Path) -> tuple[int, int, bytes]:
     return width, height, raw
 
 
-def border_scores(width: int, height: int, pixels: bytes) -> tuple[list[int], list[int]]:
-    """Count neutral mid/dark pixels by column and row; frame strokes are gray."""
+def border_scores(width: int, height: int, pixels: bytes) -> tuple[list[int], list[int], bytearray]:
+    """Count neutral mid/dark pixels by row and column, retaining their mask."""
     columns = [0] * width
     rows = [0] * height
+    mask = bytearray(width * height)
     for offset in range(0, len(pixels), 3):
         red, green, blue = pixels[offset], pixels[offset + 1], pixels[offset + 2]
         if max(red, green, blue) - min(red, green, blue) > 18:
@@ -83,9 +84,10 @@ def border_scores(width: int, height: int, pixels: bytes) -> tuple[list[int], li
             continue
         pixel_index = offset // 3
         y, x = divmod(pixel_index, width)
+        mask[pixel_index] = 1
         columns[x] += 1
         rows[y] += 1
-    return columns, rows
+    return columns, rows, mask
 
 
 def line_candidates(scores: list[int], minimum: float) -> list[tuple[int, int]]:
@@ -168,8 +170,10 @@ def choose_grid_lines(scores: list[int], count: int, axis: str) -> list[int] | N
     return chosen
 
 
-def detect_grid(width: int, height: int, pixels: bytes) -> tuple[list[int], list[int]] | None:
-    columns, rows = border_scores(width, height, pixels)
+def detect_grid(
+    width: int, height: int, pixels: bytes
+) -> tuple[list[int], list[int], bytearray] | None:
+    columns, rows, mask = border_scores(width, height, pixels)
     x_lines = choose_grid_lines(columns, 20, "x")
     y_lines = choose_grid_lines(rows, 10, "y")
     if x_lines is None and y_lines is None:
@@ -178,33 +182,148 @@ def detect_grid(width: int, height: int, pixels: bytes) -> tuple[list[int], list
         raise DetectionError("Only part of a 10-by-5 border grid was detected")
     if x_lines[0] < 0 or x_lines[-1] >= width or y_lines[0] < 0 or y_lines[-1] >= height:
         raise DetectionError("Detected frame lies outside the image")
-    return x_lines, y_lines
+    return x_lines, y_lines, mask
 
 
-def ppm_tiles(width: int, source_pixels: bytes, x_lines: list[int], y_lines: list[int]) -> tuple[bytes, int]:
-    """Build a sequence of PPM tiles, blackening a four-pixel outer band."""
+def find_local_edge(
+    mask: bytearray,
+    width: int,
+    height: int,
+    axis: str,
+    expected: int,
+    segment_start: int,
+    segment_end: int,
+    radius: int = 18,
+) -> tuple[int, bool]:
+    """Refine one side of a tile by following its local gray frame line."""
+    if segment_end < segment_start:
+        return expected, False
+    axis_length = width if axis == "x" else height
+    low = max(0, expected - radius)
+    high = min(axis_length - 1, expected + radius)
+    segment_length = segment_end - segment_start + 1
+    best_score = -1
+    best_position = expected
+    best_distance = radius + 1
+
+    for position in range(low, high + 1):
+        if axis == "x":
+            score = sum(mask[y * width + position] for y in range(segment_start, segment_end + 1))
+        else:
+            score = sum(mask[position * width + x] for x in range(segment_start, segment_end + 1))
+        distance = abs(position - expected)
+        if score > best_score or (score == best_score and distance < best_distance):
+            best_score = score
+            best_position = position
+            best_distance = distance
+
+    # Require a visible line across a substantial part of this side. A nearby
+    # art detail can also be gray; only move away from the grid if the local
+    # frame peak is meaningfully stronger than the pixels at the grid estimate.
+    minimum_score = max(12, int(segment_length * 0.32))
+    if axis == "x":
+        expected_score = sum(mask[y * width + expected] for y in range(segment_start, segment_end + 1))
+    else:
+        expected_score = sum(mask[expected * width + x] for x in range(segment_start, segment_end + 1))
+    if best_score < minimum_score:
+        return expected, False
+    if best_position != expected:
+        required_improvement = max(18, int(segment_length * 0.18))
+        if best_score - expected_score < required_improvement:
+            return expected, expected_score >= minimum_score
+    return best_position, True
+
+
+def refine_tile_box(
+    mask: bytearray,
+    width: int,
+    height: int,
+    box: tuple[int, int, int, int],
+) -> tuple[tuple[int, int, int, int], tuple[int, int, int, int]]:
+    """Independently follow each icon's frame instead of assuming a perfect grid."""
+    grid_left, grid_right, grid_top, grid_bottom = box
+    left, right, top, bottom = grid_left, grid_right, grid_top, grid_bottom
+    found = [False, False, False, False]
+
+    # Iterate once so horizontal edges use the locally adjusted left/right span,
+    # and vertical edges use the locally adjusted top/bottom span.
+    for _ in range(2):
+        y_start = max(0, top + 6)
+        y_end = min(height - 1, bottom - 6)
+        x_start = max(0, left + 6)
+        x_end = min(width - 1, right - 6)
+        left, found[0] = find_local_edge(mask, width, height, "x", grid_left, y_start, y_end)
+        right, found[1] = find_local_edge(mask, width, height, "x", grid_right, y_start, y_end)
+        x_start = max(0, left + 6)
+        x_end = min(width - 1, right - 6)
+        top, found[2] = find_local_edge(mask, width, height, "y", grid_top, x_start, x_end)
+        bottom, found[3] = find_local_edge(mask, width, height, "y", grid_bottom, x_start, x_end)
+
+    if not (0 <= left < right < width and 0 <= top < bottom < height):
+        raise DetectionError(f"Refined frame is outside the image: {(left, right, top, bottom)}")
+    tile_width, tile_height = right - left + 1, bottom - top + 1
+    if not (130 <= tile_width <= 166 and 130 <= tile_height <= 166):
+        # Reject an implausible local line match and keep the valid grid estimate.
+        left, right, top, bottom = grid_left, grid_right, grid_top, grid_bottom
+        found = [False, False, False, False]
+    return (left, right, top, bottom), tuple(found)
+
+
+def ppm_tiles(
+    width: int,
+    height: int,
+    source_pixels: bytes,
+    mask: bytearray,
+    x_lines: list[int],
+    y_lines: list[int],
+) -> tuple[bytes, int, int, int, int]:
+    """Build individually aligned PPM tiles and blacken each frame edge."""
     payload = bytearray()
     number_of_tiles = 0
+    corrected_tiles = 0
+    maximum_shift = 0
+    fallback_edges = 0
     for row in range(5):
-        top, bottom = y_lines[row * 2], y_lines[row * 2 + 1]
-        tile_height = bottom - top + 1
+        grid_top, grid_bottom = y_lines[row * 2], y_lines[row * 2 + 1]
         for column in range(10):
-            left, right = x_lines[column * 2], x_lines[column * 2 + 1]
-            tile_width = right - left + 1
+            grid_left, grid_right = x_lines[column * 2], x_lines[column * 2 + 1]
+            bounds, found = refine_tile_box(
+                mask, width, height, (grid_left, grid_right, grid_top, grid_bottom)
+            )
+            left, right, top, bottom = bounds
+            offsets = (left - grid_left, right - grid_right, top - grid_top, bottom - grid_bottom)
+            maximum_shift = max(maximum_shift, *(abs(offset) for offset in offsets))
+            if any(found_edge and abs(offset) >= 3 for found_edge, offset in zip(found, offsets)):
+                corrected_tiles += 1
+            fallback_edges += sum(not found_edge for found_edge in found)
+
+            tile_width, tile_height = right - left + 1, bottom - top + 1
             if not (130 <= tile_width <= 166 and 130 <= tile_height <= 166):
                 raise DetectionError(f"Unexpected crop dimensions: {tile_width}x{tile_height}")
             payload.extend(f"P6\n{tile_width} {tile_height}\n255\n".encode("ascii"))
             for y in range(top, bottom + 1):
                 start = (y * width + left) * 3
                 line = bytearray(source_pixels[start : start + tile_width * 3])
-                if y - top < 4 or bottom - y < 4:
+                local_y = y - top
+                if local_y < 2 or bottom - y < 2:
                     line[:] = b"\x00" * len(line)
                 else:
-                    line[:12] = b"\x00" * 12
-                    line[-12:] = b"\x00" * 12
+                    line[:6] = b"\x00" * 6
+                    line[-6:] = b"\x00" * 6
+                    edge_pixels = {2, tile_width - 3}
+                    if local_y == 2 or bottom - y == 2:
+                        edge_pixels.update(range(tile_width))
+                    for local_x in edge_pixels:
+                        pixel_offset = (y * width + left + local_x) * 3
+                        red, green, blue = source_pixels[pixel_offset : pixel_offset + 3]
+                        if max(red, green, blue) - min(red, green, blue) <= 18:
+                            luminance = (red + green + blue) // 3
+                            if 5 <= luminance <= 130:
+                                start = local_x * 3
+                                line[start : start + 3] = b"\x00\x00\x00"
                 payload.extend(line)
             number_of_tiles += 1
-    return bytes(payload), number_of_tiles
+    return bytes(payload), number_of_tiles, corrected_tiles, maximum_shift, fallback_edges
 
 
 def write_status(
@@ -214,15 +333,19 @@ def write_status(
     total_images: int,
     total_icons: int,
     archive_name: str,
+    corrected_tiles: int,
+    maximum_shift: int,
 ) -> None:
     lines = [
         "# Журнал вырезания иконок",
         "",
         f"Результат: `{archive_name}`. Исходные листы сохранены без изменений.",
-        "Рамки включены в обрезку и закрашены чёрной полосой шириной 4 пикселя по краю.",
+        "Рамки включены в обрезку и закрашены чёрным; тёмные следы сжатия по краям убраны.",
+        "Положение каждой рамки уточнялось отдельно, чтобы учесть небольшие сдвиги относительно сетки.",
         "Порядок `icon_001`–`icon_050` — слева направо, сверху вниз.",
         "",
         f"**Вырезано:** {len(processed)} папок, {total_images} листов, {total_icons:,} иконок.",
+        f"При перепроверке рамки уточнены для {corrected_tiles} иконок (сдвиг от сетки ≥3 px; максимальный — {maximum_shift} px).",
         "",
         "## Папки, где вырезал",
         "",
@@ -282,12 +405,26 @@ def main() -> int:
     skipped: dict[str, list[str]] = defaultdict(list)
     processed: dict[str, int] = defaultdict(int)
     framed_sheet_count = 0
+    corrected_tile_count = 0
+    maximum_boundary_shift = 0
+    fallback_edge_count = 0
 
-    def process_page(archive: zipfile.ZipFile, temp_dir: Path, relative: Path,
-                     width: int, pixels: bytes, x_lines: list[int], y_lines: list[int]) -> None:
+    def process_page(
+        archive: zipfile.ZipFile,
+        temp_dir: Path,
+        relative: Path,
+        width: int,
+        height: int,
+        pixels: bytes,
+        mask: bytearray,
+        x_lines: list[int],
+        y_lines: list[int],
+    ) -> tuple[int, int, int]:
         for existing in temp_dir.iterdir():
             existing.unlink()
-        payload, count = ppm_tiles(width, pixels, x_lines, y_lines)
+        payload, count, corrected, maximum_shift, fallback_edges = ppm_tiles(
+            width, height, pixels, mask, x_lines, y_lines
+        )
         if count != 50:
             raise DetectionError(f"Expected 50 tiles in {relative}, got {count}")
         output_pattern = str(temp_dir / "icon_%03d.jpg")
@@ -314,6 +451,7 @@ def main() -> int:
         for crop_index, crop in enumerate(crops, start=1):
             archive_name = (base / f"icon_{crop_index:03d}.jpg").as_posix()
             archive.write(crop, archive_name)
+        return corrected, maximum_shift, fallback_edges
 
     try:
         if args.dry_run:
@@ -341,8 +479,13 @@ def main() -> int:
                         if grid is None:
                             skipped[relative.parent.as_posix()].append(relative.name)
                         else:
-                            x_lines, y_lines = grid
-                            process_page(archive, temp_dir, relative, width, pixels, x_lines, y_lines)
+                            x_lines, y_lines, mask = grid
+                            corrected, shift, fallback = process_page(
+                                archive, temp_dir, relative, width, height, pixels, mask, x_lines, y_lines
+                            )
+                            corrected_tile_count += corrected
+                            maximum_boundary_shift = max(maximum_boundary_shift, shift)
+                            fallback_edge_count += fallback
                             processed[relative.parent.as_posix()] += 1
                             framed_sheet_count += 1
                         if index % 25 == 0 or index == len(images):
@@ -354,6 +497,13 @@ def main() -> int:
             f"in {len(processed)} folders.",
             flush=True,
         )
+        if not args.dry_run:
+            print(
+                f"Locally refined {corrected_tile_count} tile boxes by at least 3 px; "
+                f"maximum boundary shift {maximum_boundary_shift} px "
+                f"({fallback_edge_count} low-contrast sides kept the grid estimate).",
+                flush=True,
+            )
         if skipped:
             print("No frames detected (left untouched):", flush=True)
             for folder in sorted(skipped, key=str.casefold):
@@ -363,7 +513,16 @@ def main() -> int:
 
         assert temp_archive is not None
         os.replace(temp_archive, archive_path)
-        write_status(status_path, processed, skipped, framed_sheet_count, total_icons, archive_path.name)
+        write_status(
+            status_path,
+            processed,
+            skipped,
+            framed_sheet_count,
+            total_icons,
+            archive_path.name,
+            corrected_tile_count,
+            maximum_boundary_shift,
+        )
     except Exception:
         if temp_archive is not None:
             temp_archive.unlink(missing_ok=True)
