@@ -26,7 +26,7 @@ tools/rarity.py                цвет по редкости: матрица и
 tools/library_sheet.py         лист ревью по отгружаемым файлам
 style/bake-off-20.png          сравнение десяти стилей (см. ниже)
 style/palette-matrix.png       пять палитр на пяти стилях
-archive/v1-detailed/           предыдущая версия: детализированный digital art
+style/rarity.png               весь набор в шести редкостях
 ```
 
 ## Категории
