@@ -31,10 +31,11 @@ LABEL = 22
 
 
 def main() -> int:
-    folder = Path(sys.argv[1]) if len(sys.argv) > 1 else ROOT / "src" / "styles"
-    files = sorted(p for p in folder.glob("*.png"))
+    folder = Path(sys.argv[1]) if len(sys.argv) > 1 and not sys.argv[1].startswith("-") else ROOT / "src" / "styles"
+    pattern = sys.argv[2] if len(sys.argv) > 2 and not sys.argv[2].startswith("-") else "*.png"
+    files = sorted(p for p in folder.glob(pattern))
     if not files:
-        print(f"no images in {folder}", file=sys.stderr)
+        print(f"no images in {folder} matching {pattern}", file=sys.stderr)
         return 1
 
     columns = max(1, len(files) // 2)
@@ -62,7 +63,7 @@ def main() -> int:
         # 40px, the size that actually matters
         canvas.alpha_composite(art.resize((SMALL, SMALL), Image.LANCZOS), (x + 2, y + BIG + LABEL))
 
-    out = ROOT / "preview" / "style-sheet.png"
+    out = ROOT / "preview" / ("angle-sheet.png" if pattern != "*.png" else "style-sheet.png")
     out.parent.mkdir(parents=True, exist_ok=True)
     canvas.convert("RGB").save(out)
     print(f"wrote {out} ({len(files)} candidates)")
