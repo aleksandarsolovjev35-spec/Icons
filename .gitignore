@@ -3,12 +3,12 @@
 __pycache__/
 *.pyc
 
-# model weights / caches
-.models/
-*.onnx
-
-# raw generator output (reproducible, large)
+# raw generator output: 1024px originals on a white backdrop, ~2 MB each.
+# The masters under icons/ are cut from these and are what the set ships.
 src/raw/
 
 # preview sheets
 preview/
+
+# style bake-off originals
+src/styles/

@@ -89,8 +89,9 @@ def _is_flat_white(mask: np.ndarray, rgb: np.ndarray) -> bool:
     )
 
 
-def cut(source: Path) -> Image.Image:
-    img = Image.open(source)
+def cut(source: Path | Image.Image) -> Image.Image:
+    """Cut a subject out of its white studio background."""
+    img = Image.open(source) if isinstance(source, (str, Path)) else source
     if img.mode != "RGBA":
         img = img.convert("RGBA")
 

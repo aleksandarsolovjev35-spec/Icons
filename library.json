@@ -1,0 +1,23 @@
+{
+  "comment": "The icon set. Key = path under icons/, raw = file stem in src/raw/. Add a row, drop the generated PNG into src/raw/, run tools/build_icons.py.",
+  "icons": {
+    "consumables/flask-potion": { "raw": "flask-potion", "label": "Potion flask" },
+    "consumables/vial": { "raw": "vial", "label": "Vial" },
+    "consumables/bottle": { "raw": "bottle", "label": "Bottle" },
+    "consumables/scroll": { "raw": "scroll", "label": "Scroll" },
+    "adventuring/book": { "raw": "book", "label": "Book" },
+    "adventuring/torch": { "raw": "torch", "label": "Torch" },
+    "adventuring/lantern": { "raw": "lantern", "label": "Lantern" },
+    "adventuring/rope": { "raw": "rope", "label": "Rope" },
+    "containers/backpack": { "raw": "backpack", "label": "Backpack" },
+    "containers/chest": { "raw": "chest", "label": "Chest" },
+    "containers/sack": { "raw": "sack", "label": "Sack" },
+    "treasure/ingot": { "raw": "ingot", "label": "Ingot" },
+    "treasure/coin-stack": { "raw": "coin-stack", "label": "Coins" },
+    "treasure/gem": { "raw": "gem", "label": "Gem" },
+    "treasure/ring": { "raw": "ring", "label": "Ring" },
+    "materials/ore": { "raw": "ore", "label": "Ore" },
+    "nature/mushroom": { "raw": "mushroom", "label": "Mushroom" },
+    "food/bread": { "raw": "bread", "label": "Bread" }
+  }
+}
