@@ -53,28 +53,6 @@ VARIANTS = {
                          light="bottom"),
 }
 
-# готовые пресеты отделки (база — sharp: прямые углы, свет сверху-слева)
-DECOR = {
-    "steel":    dict(),                                        # нейтральный
-    "bronze":   dict(tint=(1.45, 1.05, 0.55)),                  # тёплый металл
-    "cold":     dict(tint=(0.70, 0.95, 1.45)),                  # холодный металл
-    "pin":      dict(pin=0.85),                                 # светлая нить внутри
-    "brackets": dict(bracket=0.45, bracket_len=11.0),           # акценты в углах
-    "matte":    dict(bevel=0.0, lip=0.08, gloss=0.04, drop=0.70),
-    "glass":    dict(bevel=0.45, lip=0.85, gloss=0.55, tint=(0.9, 1.0, 1.1)),
-    "slim":     dict(rim=3.0, inset=1.0, deep=9.0, lip=0.30),
-    "glow":     dict(glow=0.55, glow_tint=(1.0, 0.55, 0.25)),   # подсветка снаружи
-    "double":   dict(outer_line=0.75),                          # внешний волосяной контур
-}
-
-
-def decor_params(name: str, base: str = "sharp") -> dict:
-    """Параметры рамки с пресетом отделки."""
-    p = dict(VARIANTS[base])
-    p.update(DECOR[name])
-    return p
-
-
 # параметры, которые можно переопределить из командной строки
 OVERRIDES = ("rim", "inset", "radius", "bevel", "shadow", "deep", "gloss",
              "drop", "lip", "tone", "light")
@@ -150,12 +128,8 @@ def style_box(img: np.ndarray, box, p: dict, rim_rgb=RIM_DARK) -> None:
     # t = 0 у внешней кромки, 1 у внутренней
     t = np.clip((sd + p["inset"]) / max(p["rim"] + p["inset"], 1e-3), 0.0, 1.0)
     t = (t ** 1.4)[..., None]
-    tint = np.asarray(p.get("tint", (1.0, 1.0, 1.0)), np.float32)
-    tint = tint[::-1]                     # пресеты заданы в RGB, картинка в BGR
-    tone = rim_rgb * p["tone"] * tint
-    light_base = RIM_LIGHT * tint
-    lip_base = LIP * tint
-    light_col = tone * 0.35 + light_base * 0.65
+    tone = rim_rgb * p["tone"]
+    light_col = tone * 0.35 + RIM_LIGHT * 0.65
     # на свету (верх-лево) внешняя кромка светлее, на теневой стороне темнее
     side = np.clip((lit + 1.0) / 2.0, 0.0, 1.0)
     if p.get("light", "top") == "bottom":
@@ -169,25 +143,6 @@ def style_box(img: np.ndarray, box, p: dict, rim_rgb=RIM_DARK) -> None:
                   _cov(sd - p["rim"] + 1.2, 0.8), 0.0, 1.0)
     lip = (lip * np.clip(lit, 0.0, 1.0) * p["lip"])[..., None]
 
-    # --- опция: внутренняя пин-линия (тонкая светлая нить внутри борта)
-    pin = p.get("pin", 0.0)
-    pin_m = 0.0
-    if pin:
-        pin_m = np.clip(_cov(sd + p["inset"] + 1.6, 0.8) -
-                        _cov(sd + p["inset"] + 2.6, 0.8), 0.0, 1.0)
-        pin_m = (pin_m * pin)[..., None]
-
-    # --- опция: угловые скобки (акценты в углах): только зона самого борта
-    brk = p.get("bracket", 0.0)
-    brk_m = 0.0
-    if brk:
-        L = float(p.get("bracket_len", 16.0))
-        band = np.clip(_cov(sd - p["rim"], 1.0) -
-                       _cov(sd + p["inset"] + 1.0, 1.0), 0.0, 1.0)
-        zone = ((np.abs(X - cx) > hw - L) &
-                (np.abs(Y - cy) > hh - L)).astype(np.float32)
-        brk_m = (band * zone * min(brk, 1.0))[..., None]
-
     # --- 3. внутренняя тень слота (сверху-слева) и блик (снизу-справа)
     d0, d1 = p["inset"], p["inset"] + p["deep"]
     ish = np.clip(_cov(sd + d0, 1.0) - _cov(sd + d1, d1 - d0), 0, 1)
@@ -197,21 +152,6 @@ def style_box(img: np.ndarray, box, p: dict, rim_rgb=RIM_DARK) -> None:
                  _cov(sd + p["inset"] + 1.8, 1.0), 0.0, 1.0)
     gl = gl * np.clip(lit, 0.0, 1.0) * p["gloss"]
 
-    # --- опция: внешнее свечение (например, для hover/выделения)
-    glow = p.get("glow", 0.0)
-    if glow:
-        gb = np.clip(_cov(sd - p["rim"] - 1.0, 9.0) * 0.5, 0.0, 1.0)
-        gt = np.asarray(p.get("glow_tint", (1.0, 0.6, 0.3)), np.float32)[::-1]
-        patch = patch + gb[..., None] * gt * 90.0 * glow
-
-    # --- опция: внешний волосяной контур (двойная рамка)
-    oline = p.get("outer_line", 0.0)
-    if oline:
-        ol = np.clip(_cov(sd - p["rim"] - 2.6, 0.9) -
-                     _cov(sd - p["rim"] - 3.4, 0.9), 0.0, 1.0)
-        om = (ol * oline)[..., None]
-        patch = patch * (1.0 - om) + lip_base * 1.1 * om
-
     # --- композит
     patch *= (1.0 - drop)[..., None]                       # падающая тень
     patch *= (1.0 - ish)[..., None]                        # внутренняя тень
@@ -219,11 +159,7 @@ def style_box(img: np.ndarray, box, p: dict, rim_rgb=RIM_DARK) -> None:
     patch = patch * (1.0 - a) + rim_col * a                # борт
     g = gl[..., None]
     patch = patch * (1.0 - g) + GLOSS * g                  # блик
-    patch = patch * (1.0 - lip) + lip_base * lip           # световая линия
-    if pin:                                                 # внутренняя нить
-        patch = patch * (1.0 - pin_m) + lip_base * 0.95 * pin_m
-    if brk:                                                 # угловые скобки
-        patch = patch * (1.0 - brk_m) + lip_base * 1.25 * brk_m
+    patch = patch * (1.0 - lip) + LIP * lip                # световая линия
 
     img[ay0:ay1, ax0:ax1] = np.clip(patch, 0, 255).astype(np.uint8)
 
