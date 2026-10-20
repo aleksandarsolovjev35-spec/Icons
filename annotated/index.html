@@ -1,0 +1,974 @@
+<!doctype html><html lang="ru"><head><meta charset="utf-8">
+<title>Рамки иконок — отработка алгоритма</title><style>
+    body{background:#111;color:#ddd;font:14px/1.5 -apple-system,Segoe UI,Roboto,sans-serif;margin:0}
+    header{padding:18px 24px;background:#191919;border-bottom:1px solid #2c2c2c;position:sticky;top:0;z-index:5}
+    h1{font-size:18px;margin:0 0 6px}
+    .stats span{display:inline-block;margin-right:16px;color:#9be89b}
+    .filters{margin-top:10px}
+    .filters a{color:#8fc9ff;margin-right:14px;text-decoration:none;font-size:13px}
+    .filters a.active{color:#fff;border-bottom:2px solid #e04}
+    .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(420px,1fr));gap:14px;padding:18px 24px}
+    .card{background:#191919;border:1px solid #2a2a2a;border-radius:6px;overflow:hidden}
+    .card img{width:100%;display:block}
+    .meta{padding:8px 10px;font-size:12px;color:#aaa;display:flex;justify-content:space-between;gap:8px}
+    .meta b{color:#eee;font-weight:600}
+    .ok{color:#6ad46a}.warn{color:#ff9b3d}.nofr{color:#ff5b5b}
+    .contacts{padding:8px 24px 30px;display:flex;flex-wrap:wrap;gap:10px}
+    .contacts a{color:#8fc9ff;font-size:13px}
+    </style></head><body>
+<header><h1>Поиск серо-белых рамок: отработка на 234 листах</h1>
+<div class="stats"><span>рамок найдено: 11300</span>
+<span>листов ок: 226</span><span>с замечаниями: 0</span>
+<span>без рамок: 8</span></div>
+<div class="filters">
+<a href="#" data-f="all" class="active">все</a>
+<a href="#" data-f="ok">только ок</a>
+<a href="#" data-f="warn">с замечаниями</a>
+<a href="#" data-f="no_frames">без рамок</a>
+</div></header>
+<div class="contacts">Контактные листы: <a href="sheets/sheet_01.jpg" target="_blank">sheet_01.jpg</a><a href="sheets/sheet_02.jpg" target="_blank">sheet_02.jpg</a><a href="sheets/sheet_03.jpg" target="_blank">sheet_03.jpg</a><a href="sheets/sheet_04.jpg" target="_blank">sheet_04.jpg</a><a href="sheets/sheet_05.jpg" target="_blank">sheet_05.jpg</a><a href="sheets/sheet_06.jpg" target="_blank">sheet_06.jpg</a><a href="sheets/sheet_07.jpg" target="_blank">sheet_07.jpg</a><a href="sheets/sheet_08.jpg" target="_blank">sheet_08.jpg</a><a href="sheets/sheet_09.jpg" target="_blank">sheet_09.jpg</a><a href="sheets/sheet_10.jpg" target="_blank">sheet_10.jpg</a><a href="sheets/sheet_11.jpg" target="_blank">sheet_11.jpg</a><a href="sheets/sheet_12.jpg" target="_blank">sheet_12.jpg</a><a href="sheets/sheet_13.jpg" target="_blank">sheet_13.jpg</a><a href="sheets/sheet_14.jpg" target="_blank">sheet_14.jpg</a><a href="sheets/sheet_15.jpg" target="_blank">sheet_15.jpg</a><a href="sheets/sheet_16.jpg" target="_blank">sheet_16.jpg</a><a href="sheets/sheet_17.jpg" target="_blank">sheet_17.jpg</a><a href="sheets/sheet_18.jpg" target="_blank">sheet_18.jpg</a><a href="sheets/sheet_19.jpg" target="_blank">sheet_19.jpg</a><a href="sheets/sheet_20.jpg" target="_blank">sheet_20.jpg</a><a href="sheets/sheet_21.jpg" target="_blank">sheet_21.jpg</a><a href="sheets/sheet_22.jpg" target="_blank">sheet_22.jpg</a><a href="sheets/sheet_23.jpg" target="_blank">sheet_23.jpg</a><a href="sheets/sheet_24.jpg" target="_blank">sheet_24.jpg</a><a href="sheets/sheet_25.jpg" target="_blank">sheet_25.jpg</a><a href="sheets/sheet_26.jpg" target="_blank">sheet_26.jpg</a><a href="sheets/sheet_27.jpg" target="_blank">sheet_27.jpg</a><a href="sheets/sheet_28.jpg" target="_blank">sheet_28.jpg</a><a href="sheets/sheet_29.jpg" target="_blank">sheet_29.jpg</a><a href="sheets/sheet_30.jpg" target="_blank">sheet_30.jpg</a></div>
+<div class="grid"><div class="card" data-status="ok">
+  <a href="preview/Alchemical%20Reagents%20Icons/file%20%2884%29.jpg"><img loading="lazy" src="preview/Alchemical%20Reagents%20Icons/file%20%2884%29.jpg"></a>
+  <div class="meta"><b>Alchemical Reagents Icons/file (84).jpg</b>
+  <span class="ok">ok · 10×5 · рамок 50 · conf 0.904</span></div>
+</div><div class="card" data-status="ok">
+  <a href="preview/Alchemical%20Reagents%20Icons/file%20%2885%29.jpg"><img loading="lazy" src="preview/Alchemical%20Reagents%20Icons/file%20%2885%29.jpg"></a>
+  <div class="meta"><b>Alchemical Reagents Icons/file (85).jpg</b>
+  <span class="ok">ok · 10×5 · рамок 50 · conf 0.91</span></div>
+</div><div class="card" data-status="ok">
+  <a href="preview/Alchemy%20Potion%20Icons/file%20%2884%29.jpg"><img loading="lazy" src="preview/Alchemy%20Potion%20Icons/file%20%2884%29.jpg"></a>
+  <div class="meta"><b>Alchemy Potion Icons/file (84).jpg</b>
+  <span class="ok">ok · 10×5 · рамок 50 · conf 0.948</span></div>
+</div><div class="card" data-status="ok">
+  <a href="preview/Alchemy%20Potion%20Icons/file%20%2885%29.jpg"><img loading="lazy" src="preview/Alchemy%20Potion%20Icons/file%20%2885%29.jpg"></a>
+  <div class="meta"><b>Alchemy Potion Icons/file (85).jpg</b>
+  <span class="ok">ok · 10×5 · рамок 50 · conf 0.943</span></div>
+</div><div class="card" data-status="ok">
+  <a href="preview/Bakery%20Icons/file%20%2884%29.jpg"><img loading="lazy" src="preview/Bakery%20Icons/file%20%2884%29.jpg"></a>
+  <div class="meta"><b>Bakery Icons/file (84).jpg</b>
+  <span class="ok">ok · 10×5 · рамок 50 · conf 0.912</span></div>
+</div><div class="card" data-status="ok">
+  <a href="preview/Bakery%20Icons/file%20%2885%29.jpg"><img loading="lazy" src="preview/Bakery%20Icons/file%20%2885%29.jpg"></a>
+  <div class="meta"><b>Bakery Icons/file (85).jpg</b>
+  <span class="ok">ok · 10×5 · рамок 50 · conf 0.924</span></div>
+</div><div class="card" data-status="ok">
+  <a href="preview/Building%20and%20Craft%20Icons/file%20%2884%29.jpg"><img loading="lazy" src="preview/Building%20and%20Craft%20Icons/file%20%2884%29.jpg"></a>
+  <div class="meta"><b>Building and Craft Icons/file (84).jpg</b>
+  <span class="ok">ok · 10×5 · рамок 50 · conf 0.946</span></div>
+</div><div class="card" data-status="ok">
+  <a href="preview/Building%20and%20Craft%20Icons/file%20%2885%29.jpg"><img loading="lazy" src="preview/Building%20and%20Craft%20Icons/file%20%2885%29.jpg"></a>
+  <div class="meta"><b>Building and Craft Icons/file (85).jpg</b>
+  <span class="ok">ok · 10×5 · рамок 50 · conf 0.936</span></div>
+</div><div class="card" data-status="ok">
+  <a href="preview/Carpenter%20Icons/file%20%2884%29.jpg"><img loading="lazy" src="preview/Carpenter%20Icons/file%20%2884%29.jpg"></a>
+  <div class="meta"><b>Carpenter Icons/file (84).jpg</b>
+  <span class="ok">ok · 10×5 · рамок 50 · conf 0.88</span></div>
+</div><div class="card" data-status="ok">
+  <a href="preview/Carpenter%20Icons/file%20%2885%29.jpg"><img loading="lazy" src="preview/Carpenter%20Icons/file%20%2885%29.jpg"></a>
+  <div class="meta"><b>Carpenter Icons/file (85).jpg</b>
+  <span class="ok">ok · 10×5 · рамок 50 · conf 0.862</span></div>
+</div><div class="card" data-status="ok">
+  <a href="preview/Dungeon%20Scrolls%20Icons/file%20%2884%29.jpg"><img loading="lazy" src="preview/Dungeon%20Scrolls%20Icons/file%20%2884%29.jpg"></a>
+  <div class="meta"><b>Dungeon Scrolls Icons/file (84).jpg</b>
+  <span class="ok">ok · 10×5 · рамок 50 · conf 0.962</span></div>
+</div><div class="card" data-status="ok">
+  <a href="preview/Dungeon%20Scrolls%20Icons/file%20%2885%29.jpg"><img loading="lazy" src="preview/Dungeon%20Scrolls%20Icons/file%20%2885%29.jpg"></a>
+  <div class="meta"><b>Dungeon Scrolls Icons/file (85).jpg</b>
+  <span class="ok">ok · 10×5 · рамок 50 · conf 0.956</span></div>
+</div><div class="card" data-status="ok">
+  <a href="preview/Dungeon%20Treasure%20Icons/file%20%2884%29.jpg"><img loading="lazy" src="preview/Dungeon%20Treasure%20Icons/file%20%2884%29.jpg"></a>
+  <div class="meta"><b>Dungeon Treasure Icons/file (84).jpg</b>
+  <span class="ok">ok · 10×5 · рамок 50 · conf 0.925</span></div>
+</div><div class="card" data-status="ok">
+  <a href="preview/Dungeon%20Treasure%20Icons/file%20%2885%29.jpg"><img loading="lazy" src="preview/Dungeon%20Treasure%20Icons/file%20%2885%29.jpg"></a>
+  <div class="meta"><b>Dungeon Treasure Icons/file (85).jpg</b>
+  <span class="ok">ok · 10×5 · рамок 50 · conf 0.9</span></div>
+</div><div class="card" data-status="ok">
+  <a href="preview/Dwarven%20Mining%20Icons/file%20%2884%29.jpg"><img loading="lazy" src="preview/Dwarven%20Mining%20Icons/file%20%2884%29.jpg"></a>
+  <div class="meta"><b>Dwarven Mining Icons/file (84).jpg</b>
+  <span class="ok">ok · 10×5 · рамок 50 · conf 0.823</span></div>
+</div><div class="card" data-status="ok">
+  <a href="preview/Dwarven%20Mining%20Icons/file%20%2885%29.jpg"><img loading="lazy" src="preview/Dwarven%20Mining%20Icons/file%20%2885%29.jpg"></a>
+  <div class="meta"><b>Dwarven Mining Icons/file (85).jpg</b>
+  <span class="ok">ok · 10×5 · рамок 50 · conf 0.855</span></div>
+</div><div class="card" data-status="ok">
+  <a href="preview/Magic%20Lab%20Icons/file%20%2884%29.jpg"><img loading="lazy" src="preview/Magic%20Lab%20Icons/file%20%2884%29.jpg"></a>
+  <div class="meta"><b>Magic Lab Icons/file (84).jpg</b>
+  <span class="ok">ok · 10×5 · рамок 50 · conf 0.911</span></div>
+</div><div class="card" data-status="ok">
+  <a href="preview/Magic%20Lab%20Icons/file%20%2885%29.jpg"><img loading="lazy" src="preview/Magic%20Lab%20Icons/file%20%2885%29.jpg"></a>
+  <div class="meta"><b>Magic Lab Icons/file (85).jpg</b>
+  <span class="ok">ok · 10×5 · рамок 50 · conf 0.941</span></div>
+</div><div class="card" data-status="ok">
+  <a href="preview/Magic%20Treasure%20Icons/file%20%2884%29.jpg"><img loading="lazy" src="preview/Magic%20Treasure%20Icons/file%20%2884%29.jpg"></a>
+  <div class="meta"><b>Magic Treasure Icons/file (84).jpg</b>
+  <span class="ok">ok · 10×5 · рамок 50 · conf 0.943</span></div>
+</div><div class="card" data-status="ok">
+  <a href="preview/Magic%20Treasure%20Icons/file%20%2885%29.jpg"><img loading="lazy" src="preview/Magic%20Treasure%20Icons/file%20%2885%29.jpg"></a>
+  <div class="meta"><b>Magic Treasure Icons/file (85).jpg</b>
+  <span class="ok">ok · 10×5 · рамок 50 · conf 0.957</span></div>
+</div><div class="card" data-status="ok">
+  <a href="preview/Monsters%20Hunter%20Loot/file%20%2884%29.jpg"><img loading="lazy" src="preview/Monsters%20Hunter%20Loot/file%20%2884%29.jpg"></a>
+  <div class="meta"><b>Monsters Hunter Loot/file (84).jpg</b>
+  <span class="ok">ok · 10×5 · рамок 50 · conf 0.923</span></div>
+</div><div class="card" data-status="ok">
+  <a href="preview/Monsters%20Hunter%20Loot/file%20%2885%29.jpg"><img loading="lazy" src="preview/Monsters%20Hunter%20Loot/file%20%2885%29.jpg"></a>
+  <div class="meta"><b>Monsters Hunter Loot/file (85).jpg</b>
+  <span class="ok">ok · 10×5 · рамок 50 · conf 0.925</span></div>
+</div><div class="card" data-status="ok">
+  <a href="preview/Ocean%20Loot%20Icons/file%20%2884%29.jpg"><img loading="lazy" src="preview/Ocean%20Loot%20Icons/file%20%2884%29.jpg"></a>
+  <div class="meta"><b>Ocean Loot Icons/file (84).jpg</b>
+  <span class="ok">ok · 10×5 · рамок 50 · conf 0.931</span></div>
+</div><div class="card" data-status="ok">
+  <a href="preview/Ocean%20Loot%20Icons/file%20%2885%29.jpg"><img loading="lazy" src="preview/Ocean%20Loot%20Icons/file%20%2885%29.jpg"></a>
+  <div class="meta"><b>Ocean Loot Icons/file (85).jpg</b>
+  <span class="ok">ok · 10×5 · рамок 50 · conf 0.94</span></div>
+</div><div class="card" data-status="ok">
+  <a href="preview/RPG%20Armor%20Icons%2001/file%20%2884%29.jpg"><img loading="lazy" src="preview/RPG%20Armor%20Icons%2001/file%20%2884%29.jpg"></a>
+  <div class="meta"><b>RPG Armor Icons 01/file (84).jpg</b>
+  <span class="ok">ok · 10×5 · рамок 50 · conf 0.845</span></div>
+</div><div class="card" data-status="ok">
+  <a href="preview/RPG%20Armor%20Icons%2001/file%20%2885%29.jpg"><img loading="lazy" src="preview/RPG%20Armor%20Icons%2001/file%20%2885%29.jpg"></a>
+  <div class="meta"><b>RPG Armor Icons 01/file (85).jpg</b>
+  <span class="ok">ok · 10×5 · рамок 50 · conf 0.775</span></div>
+</div><div class="card" data-status="ok">
+  <a href="preview/RPG%20Armor%20Icons%2002/file%20%2884%29.jpg"><img loading="lazy" src="preview/RPG%20Armor%20Icons%2002/file%20%2884%29.jpg"></a>
+  <div class="meta"><b>RPG Armor Icons 02/file (84).jpg</b>
+  <span class="ok">ok · 10×5 · рамок 50 · conf 0.873</span></div>
+</div><div class="card" data-status="ok">
+  <a href="preview/RPG%20Armor%20Icons%2002/file%20%2885%29.jpg"><img loading="lazy" src="preview/RPG%20Armor%20Icons%2002/file%20%2885%29.jpg"></a>
+  <div class="meta"><b>RPG Armor Icons 02/file (85).jpg</b>
+  <span class="ok">ok · 10×5 · рамок 50 · conf 0.867</span></div>
+</div><div class="card" data-status="ok">
+  <a href="preview/RPG%20Armor%20Icons%2003/file%20%2884%29.jpg"><img loading="lazy" src="preview/RPG%20Armor%20Icons%2003/file%20%2884%29.jpg"></a>
+  <div class="meta"><b>RPG Armor Icons 03/file (84).jpg</b>
+  <span class="ok">ok · 10×5 · рамок 50 · conf 0.874</span></div>
+</div><div class="card" data-status="ok">
+  <a href="preview/RPG%20Armor%20Icons%2003/file%20%2885%29.jpg"><img loading="lazy" src="preview/RPG%20Armor%20Icons%2003/file%20%2885%29.jpg"></a>
+  <div class="meta"><b>RPG Armor Icons 03/file (85).jpg</b>
+  <span class="ok">ok · 10×5 · рамок 50 · conf 0.931</span></div>
+</div><div class="card" data-status="ok">
+  <a href="preview/RPG%20Armor%20Icons%2004/file%20%2884%29.jpg"><img loading="lazy" src="preview/RPG%20Armor%20Icons%2004/file%20%2884%29.jpg"></a>
+  <div class="meta"><b>RPG Armor Icons 04/file (84).jpg</b>
+  <span class="ok">ok · 10×5 · рамок 50 · conf 0.906</span></div>
+</div><div class="card" data-status="ok">
+  <a href="preview/RPG%20Armor%20Icons%2004/file%20%2885%29.jpg"><img loading="lazy" src="preview/RPG%20Armor%20Icons%2004/file%20%2885%29.jpg"></a>
+  <div class="meta"><b>RPG Armor Icons 04/file (85).jpg</b>
+  <span class="ok">ok · 10×5 · рамок 50 · conf 0.888</span></div>
+</div><div class="card" data-status="ok">
+  <a href="preview/RPG%20Cooking%20Icons/file%20%2884%29.jpg"><img loading="lazy" src="preview/RPG%20Cooking%20Icons/file%20%2884%29.jpg"></a>
+  <div class="meta"><b>RPG Cooking Icons/file (84).jpg</b>
+  <span class="ok">ok · 10×5 · рамок 50 · conf 0.946</span></div>
+</div><div class="card" data-status="ok">
+  <a href="preview/RPG%20Cooking%20Icons/file%20%2885%29.jpg"><img loading="lazy" src="preview/RPG%20Cooking%20Icons/file%20%2885%29.jpg"></a>
+  <div class="meta"><b>RPG Cooking Icons/file (85).jpg</b>
+  <span class="ok">ok · 10×5 · рамок 50 · conf 0.956</span></div>
+</div><div class="card" data-status="ok">
+  <a href="preview/RPG%20Craft%20Resources%2001/file%20%2884%29.jpg"><img loading="lazy" src="preview/RPG%20Craft%20Resources%2001/file%20%2884%29.jpg"></a>
+  <div class="meta"><b>RPG Craft Resources 01/file (84).jpg</b>
+  <span class="ok">ok · 10×5 · рамок 50 · conf 0.867</span></div>
+</div><div class="card" data-status="ok">
+  <a href="preview/RPG%20Craft%20Resources%2001/file%20%2885%29.jpg"><img loading="lazy" src="preview/RPG%20Craft%20Resources%2001/file%20%2885%29.jpg"></a>
+  <div class="meta"><b>RPG Craft Resources 01/file (85).jpg</b>
+  <span class="ok">ok · 10×5 · рамок 50 · conf 0.922</span></div>
+</div><div class="card" data-status="ok">
+  <a href="preview/RPG%20Craft%20Resources%2002/file%20%2884%29.jpg"><img loading="lazy" src="preview/RPG%20Craft%20Resources%2002/file%20%2884%29.jpg"></a>
+  <div class="meta"><b>RPG Craft Resources 02/file (84).jpg</b>
+  <span class="ok">ok · 10×5 · рамок 50 · conf 0.873</span></div>
+</div><div class="card" data-status="ok">
+  <a href="preview/RPG%20Craft%20Resources%2002/file%20%2885%29.jpg"><img loading="lazy" src="preview/RPG%20Craft%20Resources%2002/file%20%2885%29.jpg"></a>
+  <div class="meta"><b>RPG Craft Resources 02/file (85).jpg</b>
+  <span class="ok">ok · 10×5 · рамок 50 · conf 0.868</span></div>
+</div><div class="card" data-status="ok">
+  <a href="preview/RPG%20Craft%20Resources%2003/file%20%2884%29.jpg"><img loading="lazy" src="preview/RPG%20Craft%20Resources%2003/file%20%2884%29.jpg"></a>
+  <div class="meta"><b>RPG Craft Resources 03/file (84).jpg</b>
+  <span class="ok">ok · 10×5 · рамок 50 · conf 0.956</span></div>
+</div><div class="card" data-status="ok">
+  <a href="preview/RPG%20Craft%20Resources%2003/file%20%2885%29.jpg"><img loading="lazy" src="preview/RPG%20Craft%20Resources%2003/file%20%2885%29.jpg"></a>
+  <div class="meta"><b>RPG Craft Resources 03/file (85).jpg</b>
+  <span class="ok">ok · 10×5 · рамок 50 · conf 0.914</span></div>
+</div><div class="card" data-status="ok">
+  <a href="preview/RPG%20Craft%20Resources%2004/file%20%2884%29.jpg"><img loading="lazy" src="preview/RPG%20Craft%20Resources%2004/file%20%2884%29.jpg"></a>
+  <div class="meta"><b>RPG Craft Resources 04/file (84).jpg</b>
+  <span class="ok">ok · 10×5 · рамок 50 · conf 0.902</span></div>
+</div><div class="card" data-status="ok">
+  <a href="preview/RPG%20Craft%20Resources%2004/file%20%2885%29.jpg"><img loading="lazy" src="preview/RPG%20Craft%20Resources%2004/file%20%2885%29.jpg"></a>
+  <div class="meta"><b>RPG Craft Resources 04/file (85).jpg</b>
+  <span class="ok">ok · 10×5 · рамок 50 · conf 0.925</span></div>
+</div><div class="card" data-status="ok">
+  <a href="preview/RPG%20Craft%20Resources%2005/file%20%2884%29.jpg"><img loading="lazy" src="preview/RPG%20Craft%20Resources%2005/file%20%2884%29.jpg"></a>
+  <div class="meta"><b>RPG Craft Resources 05/file (84).jpg</b>
+  <span class="ok">ok · 10×5 · рамок 50 · conf 0.868</span></div>
+</div><div class="card" data-status="ok">
+  <a href="preview/RPG%20Craft%20Resources%2005/file%20%2885%29.jpg"><img loading="lazy" src="preview/RPG%20Craft%20Resources%2005/file%20%2885%29.jpg"></a>
+  <div class="meta"><b>RPG Craft Resources 05/file (85).jpg</b>
+  <span class="ok">ok · 10×5 · рамок 50 · conf 0.876</span></div>
+</div><div class="card" data-status="ok">
+  <a href="preview/RPG%20Craft%20Resources%2006/file%20%2884%29.jpg"><img loading="lazy" src="preview/RPG%20Craft%20Resources%2006/file%20%2884%29.jpg"></a>
+  <div class="meta"><b>RPG Craft Resources 06/file (84).jpg</b>
+  <span class="ok">ok · 10×5 · рамок 50 · conf 0.875</span></div>
+</div><div class="card" data-status="ok">
+  <a href="preview/RPG%20Craft%20Resources%2006/file%20%2885%29.jpg"><img loading="lazy" src="preview/RPG%20Craft%20Resources%2006/file%20%2885%29.jpg"></a>
+  <div class="meta"><b>RPG Craft Resources 06/file (85).jpg</b>
+  <span class="ok">ok · 10×5 · рамок 50 · conf 0.894</span></div>
+</div><div class="card" data-status="ok">
+  <a href="preview/RPG%20Craft%20Resources%2007/file%20%2884%29.jpg"><img loading="lazy" src="preview/RPG%20Craft%20Resources%2007/file%20%2884%29.jpg"></a>
+  <div class="meta"><b>RPG Craft Resources 07/file (84).jpg</b>
+  <span class="ok">ok · 10×5 · рамок 50 · conf 0.879</span></div>
+</div><div class="card" data-status="ok">
+  <a href="preview/RPG%20Craft%20Resources%2007/file%20%2885%29.jpg"><img loading="lazy" src="preview/RPG%20Craft%20Resources%2007/file%20%2885%29.jpg"></a>
+  <div class="meta"><b>RPG Craft Resources 07/file (85).jpg</b>
+  <span class="ok">ok · 10×5 · рамок 50 · conf 0.913</span></div>
+</div><div class="card" data-status="ok">
+  <a href="preview/RPG%20Craft%20Resources%2008/file%20%2884%29.jpg"><img loading="lazy" src="preview/RPG%20Craft%20Resources%2008/file%20%2884%29.jpg"></a>
+  <div class="meta"><b>RPG Craft Resources 08/file (84).jpg</b>
+  <span class="ok">ok · 10×5 · рамок 50 · conf 0.915</span></div>
+</div><div class="card" data-status="ok">
+  <a href="preview/RPG%20Craft%20Resources%2008/file%20%2885%29.jpg"><img loading="lazy" src="preview/RPG%20Craft%20Resources%2008/file%20%2885%29.jpg"></a>
+  <div class="meta"><b>RPG Craft Resources 08/file (85).jpg</b>
+  <span class="ok">ok · 10×5 · рамок 50 · conf 0.893</span></div>
+</div><div class="card" data-status="ok">
+  <a href="preview/RPG%20Craft%20Resources%2009/file%20%2884%29.jpg"><img loading="lazy" src="preview/RPG%20Craft%20Resources%2009/file%20%2884%29.jpg"></a>
+  <div class="meta"><b>RPG Craft Resources 09/file (84).jpg</b>
+  <span class="ok">ok · 10×5 · рамок 50 · conf 0.913</span></div>
+</div><div class="card" data-status="ok">
+  <a href="preview/RPG%20Craft%20Resources%2009/file%20%2885%29.jpg"><img loading="lazy" src="preview/RPG%20Craft%20Resources%2009/file%20%2885%29.jpg"></a>
+  <div class="meta"><b>RPG Craft Resources 09/file (85).jpg</b>
+  <span class="ok">ok · 10×5 · рамок 50 · conf 0.93</span></div>
+</div><div class="card" data-status="ok">
+  <a href="preview/RPG%20Craft%20Resources%2010/file%20%2884%29.jpg"><img loading="lazy" src="preview/RPG%20Craft%20Resources%2010/file%20%2884%29.jpg"></a>
+  <div class="meta"><b>RPG Craft Resources 10/file (84).jpg</b>
+  <span class="ok">ok · 10×5 · рамок 50 · conf 0.917</span></div>
+</div><div class="card" data-status="ok">
+  <a href="preview/RPG%20Craft%20Resources%2010/file%20%2885%29.jpg"><img loading="lazy" src="preview/RPG%20Craft%20Resources%2010/file%20%2885%29.jpg"></a>
+  <div class="meta"><b>RPG Craft Resources 10/file (85).jpg</b>
+  <span class="ok">ok · 10×5 · рамок 50 · conf 0.902</span></div>
+</div><div class="card" data-status="ok">
+  <a href="preview/RPG%20Craft%20Resources%2011/file%20%2884%29.jpg"><img loading="lazy" src="preview/RPG%20Craft%20Resources%2011/file%20%2884%29.jpg"></a>
+  <div class="meta"><b>RPG Craft Resources 11/file (84).jpg</b>
+  <span class="ok">ok · 10×5 · рамок 50 · conf 0.941</span></div>
+</div><div class="card" data-status="ok">
+  <a href="preview/RPG%20Craft%20Resources%2011/file%20%2885%29.jpg"><img loading="lazy" src="preview/RPG%20Craft%20Resources%2011/file%20%2885%29.jpg"></a>
+  <div class="meta"><b>RPG Craft Resources 11/file (85).jpg</b>
+  <span class="ok">ok · 10×5 · рамок 50 · conf 0.899</span></div>
+</div><div class="card" data-status="ok">
+  <a href="preview/RPG%20Craft%20Resources%2012/file%20%2884%29.jpg"><img loading="lazy" src="preview/RPG%20Craft%20Resources%2012/file%20%2884%29.jpg"></a>
+  <div class="meta"><b>RPG Craft Resources 12/file (84).jpg</b>
+  <span class="ok">ok · 10×5 · рамок 50 · conf 0.884</span></div>
+</div><div class="card" data-status="ok">
+  <a href="preview/RPG%20Craft%20Resources%2012/file%20%2885%29.jpg"><img loading="lazy" src="preview/RPG%20Craft%20Resources%2012/file%20%2885%29.jpg"></a>
+  <div class="meta"><b>RPG Craft Resources 12/file (85).jpg</b>
+  <span class="ok">ok · 10×5 · рамок 50 · conf 0.901</span></div>
+</div><div class="card" data-status="ok">
+  <a href="preview/RPG%20Druid%20Icons/file%20%2884%29.jpg"><img loading="lazy" src="preview/RPG%20Druid%20Icons/file%20%2884%29.jpg"></a>
+  <div class="meta"><b>RPG Druid Icons/file (84).jpg</b>
+  <span class="ok">ok · 10×5 · рамок 50 · conf 0.936</span></div>
+</div><div class="card" data-status="ok">
+  <a href="preview/RPG%20Druid%20Icons/file%20%2885%29.jpg"><img loading="lazy" src="preview/RPG%20Druid%20Icons/file%20%2885%29.jpg"></a>
+  <div class="meta"><b>RPG Druid Icons/file (85).jpg</b>
+  <span class="ok">ok · 10×5 · рамок 50 · conf 0.918</span></div>
+</div><div class="card" data-status="ok">
+  <a href="preview/RPG%20Dwarven%20Icons/file%20%2884%29.jpg"><img loading="lazy" src="preview/RPG%20Dwarven%20Icons/file%20%2884%29.jpg"></a>
+  <div class="meta"><b>RPG Dwarven Icons/file (84).jpg</b>
+  <span class="ok">ok · 10×5 · рамок 50 · conf 0.902</span></div>
+</div><div class="card" data-status="ok">
+  <a href="preview/RPG%20Dwarven%20Icons/file%20%2885%29.jpg"><img loading="lazy" src="preview/RPG%20Dwarven%20Icons/file%20%2885%29.jpg"></a>
+  <div class="meta"><b>RPG Dwarven Icons/file (85).jpg</b>
+  <span class="ok">ok · 10×5 · рамок 50 · conf 0.879</span></div>
+</div><div class="card" data-status="ok">
+  <a href="preview/RPG%20Fishing%20Icons%2003/file%20%2884%29.jpg"><img loading="lazy" src="preview/RPG%20Fishing%20Icons%2003/file%20%2884%29.jpg"></a>
+  <div class="meta"><b>RPG Fishing Icons 03/file (84).jpg</b>
+  <span class="ok">ok · 10×5 · рамок 50 · conf 0.907</span></div>
+</div><div class="card" data-status="ok">
+  <a href="preview/RPG%20Fishing%20Icons%2003/file%20%2885%29.jpg"><img loading="lazy" src="preview/RPG%20Fishing%20Icons%2003/file%20%2885%29.jpg"></a>
+  <div class="meta"><b>RPG Fishing Icons 03/file (85).jpg</b>
+  <span class="ok">ok · 10×5 · рамок 50 · conf 0.906</span></div>
+</div><div class="card" data-status="ok">
+  <a href="preview/RPG%20Food%20Icons%2001/file%20%2883%29.jpg"><img loading="lazy" src="preview/RPG%20Food%20Icons%2001/file%20%2883%29.jpg"></a>
+  <div class="meta"><b>RPG Food Icons 01/file (83).jpg</b>
+  <span class="ok">ok · 10×5 · рамок 50 · conf 0.949</span></div>
+</div><div class="card" data-status="ok">
+  <a href="preview/RPG%20Food%20Icons%2001/file%20%2884%29.jpg"><img loading="lazy" src="preview/RPG%20Food%20Icons%2001/file%20%2884%29.jpg"></a>
+  <div class="meta"><b>RPG Food Icons 01/file (84).jpg</b>
+  <span class="ok">ok · 10×5 · рамок 50 · conf 0.942</span></div>
+</div><div class="card" data-status="ok">
+  <a href="preview/RPG%20Food%20Icons%2002/file%20%2883%29.jpg"><img loading="lazy" src="preview/RPG%20Food%20Icons%2002/file%20%2883%29.jpg"></a>
+  <div class="meta"><b>RPG Food Icons 02/file (83).jpg</b>
+  <span class="ok">ok · 10×5 · рамок 50 · conf 0.91</span></div>
+</div><div class="card" data-status="ok">
+  <a href="preview/RPG%20Food%20Icons%2002/file%20%2884%29.jpg"><img loading="lazy" src="preview/RPG%20Food%20Icons%2002/file%20%2884%29.jpg"></a>
+  <div class="meta"><b>RPG Food Icons 02/file (84).jpg</b>
+  <span class="ok">ok · 10×5 · рамок 50 · conf 0.919</span></div>
+</div><div class="card" data-status="ok">
+  <a href="preview/RPG%20Food%20Icons%2003/file%20%2883%29.jpg"><img loading="lazy" src="preview/RPG%20Food%20Icons%2003/file%20%2883%29.jpg"></a>
+  <div class="meta"><b>RPG Food Icons 03/file (83).jpg</b>
+  <span class="ok">ok · 10×5 · рамок 50 · conf 0.914</span></div>
+</div><div class="card" data-status="ok">
+  <a href="preview/RPG%20Food%20Icons%2003/file%20%2884%29.jpg"><img loading="lazy" src="preview/RPG%20Food%20Icons%2003/file%20%2884%29.jpg"></a>
+  <div class="meta"><b>RPG Food Icons 03/file (84).jpg</b>
+  <span class="ok">ok · 10×5 · рамок 50 · conf 0.93</span></div>
+</div><div class="card" data-status="ok">
+  <a href="preview/RPG%20Food%20Icons%2004/file%20%2883%29.jpg"><img loading="lazy" src="preview/RPG%20Food%20Icons%2004/file%20%2883%29.jpg"></a>
+  <div class="meta"><b>RPG Food Icons 04/file (83).jpg</b>
+  <span class="ok">ok · 10×5 · рамок 50 · conf 0.918</span></div>
+</div><div class="card" data-status="ok">
+  <a href="preview/RPG%20Food%20Icons%2004/file%20%2884%29.jpg"><img loading="lazy" src="preview/RPG%20Food%20Icons%2004/file%20%2884%29.jpg"></a>
+  <div class="meta"><b>RPG Food Icons 04/file (84).jpg</b>
+  <span class="ok">ok · 10×5 · рамок 50 · conf 0.916</span></div>
+</div><div class="card" data-status="ok">
+  <a href="preview/RPG%20Food%20Icons%2005/file%20%2883%29.jpg"><img loading="lazy" src="preview/RPG%20Food%20Icons%2005/file%20%2883%29.jpg"></a>
+  <div class="meta"><b>RPG Food Icons 05/file (83).jpg</b>
+  <span class="ok">ok · 10×5 · рамок 50 · conf 0.93</span></div>
+</div><div class="card" data-status="ok">
+  <a href="preview/RPG%20Food%20Icons%2005/file%20%2884%29.jpg"><img loading="lazy" src="preview/RPG%20Food%20Icons%2005/file%20%2884%29.jpg"></a>
+  <div class="meta"><b>RPG Food Icons 05/file (84).jpg</b>
+  <span class="ok">ok · 10×5 · рамок 50 · conf 0.903</span></div>
+</div><div class="card" data-status="ok">
+  <a href="preview/RPG%20Food%20Icons%2006/file%20%2883%29.jpg"><img loading="lazy" src="preview/RPG%20Food%20Icons%2006/file%20%2883%29.jpg"></a>
+  <div class="meta"><b>RPG Food Icons 06/file (83).jpg</b>
+  <span class="ok">ok · 10×5 · рамок 50 · conf 0.946</span></div>
+</div><div class="card" data-status="ok">
+  <a href="preview/RPG%20Food%20Icons%2006/file%20%2884%29.jpg"><img loading="lazy" src="preview/RPG%20Food%20Icons%2006/file%20%2884%29.jpg"></a>
+  <div class="meta"><b>RPG Food Icons 06/file (84).jpg</b>
+  <span class="ok">ok · 10×5 · рамок 50 · conf 0.928</span></div>
+</div><div class="card" data-status="ok">
+  <a href="preview/RPG%20Gems%20Icons%2001/file%20%2883%29.jpg"><img loading="lazy" src="preview/RPG%20Gems%20Icons%2001/file%20%2883%29.jpg"></a>
+  <div class="meta"><b>RPG Gems Icons 01/file (83).jpg</b>
+  <span class="ok">ok · 10×5 · рамок 50 · conf 0.955</span></div>
+</div><div class="card" data-status="ok">
+  <a href="preview/RPG%20Gems%20Icons%2001/file%20%2884%29.jpg"><img loading="lazy" src="preview/RPG%20Gems%20Icons%2001/file%20%2884%29.jpg"></a>
+  <div class="meta"><b>RPG Gems Icons 01/file (84).jpg</b>
+  <span class="ok">ok · 10×5 · рамок 50 · conf 0.926</span></div>
+</div><div class="card" data-status="ok">
+  <a href="preview/RPG%20Gems%20Icons%2002/file%20%2883%29.jpg"><img loading="lazy" src="preview/RPG%20Gems%20Icons%2002/file%20%2883%29.jpg"></a>
+  <div class="meta"><b>RPG Gems Icons 02/file (83).jpg</b>
+  <span class="ok">ok · 10×5 · рамок 50 · conf 0.902</span></div>
+</div><div class="card" data-status="ok">
+  <a href="preview/RPG%20Gems%20Icons%2002/file%20%2884%29.jpg"><img loading="lazy" src="preview/RPG%20Gems%20Icons%2002/file%20%2884%29.jpg"></a>
+  <div class="meta"><b>RPG Gems Icons 02/file (84).jpg</b>
+  <span class="ok">ok · 10×5 · рамок 50 · conf 0.937</span></div>
+</div><div class="card" data-status="ok">
+  <a href="preview/RPG%20Jewelry%20Icons%2001/file%20%2883%29.jpg"><img loading="lazy" src="preview/RPG%20Jewelry%20Icons%2001/file%20%2883%29.jpg"></a>
+  <div class="meta"><b>RPG Jewelry Icons 01/file (83).jpg</b>
+  <span class="ok">ok · 10×5 · рамок 50 · conf 0.937</span></div>
+</div><div class="card" data-status="ok">
+  <a href="preview/RPG%20Jewelry%20Icons%2001/file%20%2884%29.jpg"><img loading="lazy" src="preview/RPG%20Jewelry%20Icons%2001/file%20%2884%29.jpg"></a>
+  <div class="meta"><b>RPG Jewelry Icons 01/file (84).jpg</b>
+  <span class="ok">ok · 10×5 · рамок 50 · conf 0.879</span></div>
+</div><div class="card" data-status="ok">
+  <a href="preview/RPG%20Jewelry%20Icons%2002/file%20%2883%29.jpg"><img loading="lazy" src="preview/RPG%20Jewelry%20Icons%2002/file%20%2883%29.jpg"></a>
+  <div class="meta"><b>RPG Jewelry Icons 02/file (83).jpg</b>
+  <span class="ok">ok · 10×5 · рамок 50 · conf 0.944</span></div>
+</div><div class="card" data-status="ok">
+  <a href="preview/RPG%20Jewelry%20Icons%2002/file%20%2884%29.jpg"><img loading="lazy" src="preview/RPG%20Jewelry%20Icons%2002/file%20%2884%29.jpg"></a>
+  <div class="meta"><b>RPG Jewelry Icons 02/file (84).jpg</b>
+  <span class="ok">ok · 10×5 · рамок 50 · conf 0.945</span></div>
+</div><div class="card" data-status="ok">
+  <a href="preview/RPG%20Jewelry%20Icons%2003/file%20%2883%29.jpg"><img loading="lazy" src="preview/RPG%20Jewelry%20Icons%2003/file%20%2883%29.jpg"></a>
+  <div class="meta"><b>RPG Jewelry Icons 03/file (83).jpg</b>
+  <span class="ok">ok · 10×5 · рамок 50 · conf 0.905</span></div>
+</div><div class="card" data-status="ok">
+  <a href="preview/RPG%20Jewelry%20Icons%2003/file%20%2884%29.jpg"><img loading="lazy" src="preview/RPG%20Jewelry%20Icons%2003/file%20%2884%29.jpg"></a>
+  <div class="meta"><b>RPG Jewelry Icons 03/file (84).jpg</b>
+  <span class="ok">ok · 10×5 · рамок 50 · conf 0.946</span></div>
+</div><div class="card" data-status="ok">
+  <a href="preview/RPG%20Jewelry%20Icons%2004/file%20%2883%29.jpg"><img loading="lazy" src="preview/RPG%20Jewelry%20Icons%2004/file%20%2883%29.jpg"></a>
+  <div class="meta"><b>RPG Jewelry Icons 04/file (83).jpg</b>
+  <span class="ok">ok · 10×5 · рамок 50 · conf 0.911</span></div>
+</div><div class="card" data-status="ok">
+  <a href="preview/RPG%20Jewelry%20Icons%2004/file%20%2884%29.jpg"><img loading="lazy" src="preview/RPG%20Jewelry%20Icons%2004/file%20%2884%29.jpg"></a>
+  <div class="meta"><b>RPG Jewelry Icons 04/file (84).jpg</b>
+  <span class="ok">ok · 10×5 · рамок 50 · conf 0.88</span></div>
+</div><div class="card" data-status="ok">
+  <a href="preview/RPG%20Loot%20Icons%2001/RPG%20Loot%20Icons%2001%20Part%201.jpg"><img loading="lazy" src="preview/RPG%20Loot%20Icons%2001/RPG%20Loot%20Icons%2001%20Part%201.jpg"></a>
+  <div class="meta"><b>RPG Loot Icons 01/RPG Loot Icons 01 Part 1.jpg</b>
+  <span class="ok">ok · 10×5 · рамок 50 · conf 0.804</span></div>
+</div><div class="card" data-status="ok">
+  <a href="preview/RPG%20Loot%20Icons%2001/RPG%20Loot%20Icons%2001%20Part%202.jpg"><img loading="lazy" src="preview/RPG%20Loot%20Icons%2001/RPG%20Loot%20Icons%2001%20Part%202.jpg"></a>
+  <div class="meta"><b>RPG Loot Icons 01/RPG Loot Icons 01 Part 2.jpg</b>
+  <span class="ok">ok · 10×5 · рамок 50 · conf 0.817</span></div>
+</div><div class="card" data-status="ok">
+  <a href="preview/RPG%20Loot%20Icons%2002/RPG%20Loot%20Icons%2002%20Part%201.jpg"><img loading="lazy" src="preview/RPG%20Loot%20Icons%2002/RPG%20Loot%20Icons%2002%20Part%201.jpg"></a>
+  <div class="meta"><b>RPG Loot Icons 02/RPG Loot Icons 02 Part 1.jpg</b>
+  <span class="ok">ok · 10×5 · рамок 50 · conf 0.812</span></div>
+</div><div class="card" data-status="ok">
+  <a href="preview/RPG%20Loot%20Icons%2002/RPG%20Loot%20Icons%2002%20Part%202.jpg"><img loading="lazy" src="preview/RPG%20Loot%20Icons%2002/RPG%20Loot%20Icons%2002%20Part%202.jpg"></a>
+  <div class="meta"><b>RPG Loot Icons 02/RPG Loot Icons 02 Part 2.jpg</b>
+  <span class="ok">ok · 10×5 · рамок 50 · conf 0.83</span></div>
+</div><div class="card" data-status="ok">
+  <a href="preview/RPG%20Loot%20Icons%2003/RPG%20Loot%20Icons%2003%20Part%201.jpg"><img loading="lazy" src="preview/RPG%20Loot%20Icons%2003/RPG%20Loot%20Icons%2003%20Part%201.jpg"></a>
+  <div class="meta"><b>RPG Loot Icons 03/RPG Loot Icons 03 Part 1.jpg</b>
+  <span class="ok">ok · 10×5 · рамок 50 · conf 0.868</span></div>
+</div><div class="card" data-status="ok">
+  <a href="preview/RPG%20Loot%20Icons%2003/RPG%20Loot%20Icons%2003%20Part%202.jpg"><img loading="lazy" src="preview/RPG%20Loot%20Icons%2003/RPG%20Loot%20Icons%2003%20Part%202.jpg"></a>
+  <div class="meta"><b>RPG Loot Icons 03/RPG Loot Icons 03 Part 2.jpg</b>
+  <span class="ok">ok · 10×5 · рамок 50 · conf 0.89</span></div>
+</div><div class="card" data-status="ok">
+  <a href="preview/RPG%20Loot%20Icons%2004/RPG%20Loot%20Icons%2004%20Part%201.jpg"><img loading="lazy" src="preview/RPG%20Loot%20Icons%2004/RPG%20Loot%20Icons%2004%20Part%201.jpg"></a>
+  <div class="meta"><b>RPG Loot Icons 04/RPG Loot Icons 04 Part 1.jpg</b>
+  <span class="ok">ok · 10×5 · рамок 50 · conf 0.901</span></div>
+</div><div class="card" data-status="ok">
+  <a href="preview/RPG%20Loot%20Icons%2004/RPG%20Loot%20Icons%2004%20Part%202.jpg"><img loading="lazy" src="preview/RPG%20Loot%20Icons%2004/RPG%20Loot%20Icons%2004%20Part%202.jpg"></a>
+  <div class="meta"><b>RPG Loot Icons 04/RPG Loot Icons 04 Part 2.jpg</b>
+  <span class="ok">ok · 10×5 · рамок 50 · conf 0.891</span></div>
+</div><div class="card" data-status="ok">
+  <a href="preview/RPG%20Loot%20Icons%2005/RPG%20Loot%20Icons%2005%20Part%201.jpg"><img loading="lazy" src="preview/RPG%20Loot%20Icons%2005/RPG%20Loot%20Icons%2005%20Part%201.jpg"></a>
+  <div class="meta"><b>RPG Loot Icons 05/RPG Loot Icons 05 Part 1.jpg</b>
+  <span class="ok">ok · 10×5 · рамок 50 · conf 0.908</span></div>
+</div><div class="card" data-status="ok">
+  <a href="preview/RPG%20Loot%20Icons%2005/RPG%20Loot%20Icons%2005%20Part%202.jpg"><img loading="lazy" src="preview/RPG%20Loot%20Icons%2005/RPG%20Loot%20Icons%2005%20Part%202.jpg"></a>
+  <div class="meta"><b>RPG Loot Icons 05/RPG Loot Icons 05 Part 2.jpg</b>
+  <span class="ok">ok · 10×5 · рамок 50 · conf 0.872</span></div>
+</div><div class="card" data-status="ok">
+  <a href="preview/RPG%20Loot%20Icons%2006/RPG%20Loot%20Icons%2006%20Part%201.jpg"><img loading="lazy" src="preview/RPG%20Loot%20Icons%2006/RPG%20Loot%20Icons%2006%20Part%201.jpg"></a>
+  <div class="meta"><b>RPG Loot Icons 06/RPG Loot Icons 06 Part 1.jpg</b>
+  <span class="ok">ok · 10×5 · рамок 50 · conf 0.941</span></div>
+</div><div class="card" data-status="ok">
+  <a href="preview/RPG%20Loot%20Icons%2006/RPG%20Loot%20Icons%2006%20Part%202.jpg"><img loading="lazy" src="preview/RPG%20Loot%20Icons%2006/RPG%20Loot%20Icons%2006%20Part%202.jpg"></a>
+  <div class="meta"><b>RPG Loot Icons 06/RPG Loot Icons 06 Part 2.jpg</b>
+  <span class="ok">ok · 10×5 · рамок 50 · conf 0.893</span></div>
+</div><div class="card" data-status="ok">
+  <a href="preview/RPG%20Loot%20Icons%2007/RPG%20Loot%20Icons%2007%20Part%201.jpg"><img loading="lazy" src="preview/RPG%20Loot%20Icons%2007/RPG%20Loot%20Icons%2007%20Part%201.jpg"></a>
+  <div class="meta"><b>RPG Loot Icons 07/RPG Loot Icons 07 Part 1.jpg</b>
+  <span class="ok">ok · 10×5 · рамок 50 · conf 0.858</span></div>
+</div><div class="card" data-status="ok">
+  <a href="preview/RPG%20Loot%20Icons%2007/RPG%20Loot%20Icons%2007%20Part%202.jpg"><img loading="lazy" src="preview/RPG%20Loot%20Icons%2007/RPG%20Loot%20Icons%2007%20Part%202.jpg"></a>
+  <div class="meta"><b>RPG Loot Icons 07/RPG Loot Icons 07 Part 2.jpg</b>
+  <span class="ok">ok · 10×5 · рамок 50 · conf 0.865</span></div>
+</div><div class="card" data-status="ok">
+  <a href="preview/RPG%20Loot%20Icons%2008/RPG%20Loot%20Icons%2008%20Part%201.jpg"><img loading="lazy" src="preview/RPG%20Loot%20Icons%2008/RPG%20Loot%20Icons%2008%20Part%201.jpg"></a>
+  <div class="meta"><b>RPG Loot Icons 08/RPG Loot Icons 08 Part 1.jpg</b>
+  <span class="ok">ok · 10×5 · рамок 50 · conf 0.908</span></div>
+</div><div class="card" data-status="ok">
+  <a href="preview/RPG%20Loot%20Icons%2008/RPG%20Loot%20Icons%2008%20Part%202.jpg"><img loading="lazy" src="preview/RPG%20Loot%20Icons%2008/RPG%20Loot%20Icons%2008%20Part%202.jpg"></a>
+  <div class="meta"><b>RPG Loot Icons 08/RPG Loot Icons 08 Part 2.jpg</b>
+  <span class="ok">ok · 10×5 · рамок 50 · conf 0.93</span></div>
+</div><div class="card" data-status="ok">
+  <a href="preview/RPG%20Loot%20Icons%2009/RPG%20Loot%20Icons%2009%20Part%201.jpg"><img loading="lazy" src="preview/RPG%20Loot%20Icons%2009/RPG%20Loot%20Icons%2009%20Part%201.jpg"></a>
+  <div class="meta"><b>RPG Loot Icons 09/RPG Loot Icons 09 Part 1.jpg</b>
+  <span class="ok">ok · 10×5 · рамок 50 · conf 0.928</span></div>
+</div><div class="card" data-status="ok">
+  <a href="preview/RPG%20Loot%20Icons%2009/RPG%20Loot%20Icons%2009%20Part%202.jpg"><img loading="lazy" src="preview/RPG%20Loot%20Icons%2009/RPG%20Loot%20Icons%2009%20Part%202.jpg"></a>
+  <div class="meta"><b>RPG Loot Icons 09/RPG Loot Icons 09 Part 2.jpg</b>
+  <span class="ok">ok · 10×5 · рамок 50 · conf 0.933</span></div>
+</div><div class="card" data-status="ok">
+  <a href="preview/RPG%20Loot%20Icons%2010/RPG%20Loot%20Icons%2010%20Part%201.jpg"><img loading="lazy" src="preview/RPG%20Loot%20Icons%2010/RPG%20Loot%20Icons%2010%20Part%201.jpg"></a>
+  <div class="meta"><b>RPG Loot Icons 10/RPG Loot Icons 10 Part 1.jpg</b>
+  <span class="ok">ok · 10×5 · рамок 50 · conf 0.938</span></div>
+</div><div class="card" data-status="ok">
+  <a href="preview/RPG%20Loot%20Icons%2010/RPG%20Loot%20Icons%2010%20Part%202.jpg"><img loading="lazy" src="preview/RPG%20Loot%20Icons%2010/RPG%20Loot%20Icons%2010%20Part%202.jpg"></a>
+  <div class="meta"><b>RPG Loot Icons 10/RPG Loot Icons 10 Part 2.jpg</b>
+  <span class="ok">ok · 10×5 · рамок 50 · conf 0.943</span></div>
+</div><div class="card" data-status="ok">
+  <a href="preview/RPG%20Loot%20Icons%2011/RPG%20Loot%20Icons%2011%20Part%201.jpg"><img loading="lazy" src="preview/RPG%20Loot%20Icons%2011/RPG%20Loot%20Icons%2011%20Part%201.jpg"></a>
+  <div class="meta"><b>RPG Loot Icons 11/RPG Loot Icons 11 Part 1.jpg</b>
+  <span class="ok">ok · 10×5 · рамок 50 · conf 0.934</span></div>
+</div><div class="card" data-status="ok">
+  <a href="preview/RPG%20Loot%20Icons%2011/RPG%20Loot%20Icons%2011%20Part%202.jpg"><img loading="lazy" src="preview/RPG%20Loot%20Icons%2011/RPG%20Loot%20Icons%2011%20Part%202.jpg"></a>
+  <div class="meta"><b>RPG Loot Icons 11/RPG Loot Icons 11 Part 2.jpg</b>
+  <span class="ok">ok · 10×5 · рамок 50 · conf 0.927</span></div>
+</div><div class="card" data-status="ok">
+  <a href="preview/RPG%20Loot%20Icons%2012/RPG%20Loot%20Icons%2012%20Part%201.jpg"><img loading="lazy" src="preview/RPG%20Loot%20Icons%2012/RPG%20Loot%20Icons%2012%20Part%201.jpg"></a>
+  <div class="meta"><b>RPG Loot Icons 12/RPG Loot Icons 12 Part 1.jpg</b>
+  <span class="ok">ok · 10×5 · рамок 50 · conf 0.886</span></div>
+</div><div class="card" data-status="ok">
+  <a href="preview/RPG%20Loot%20Icons%2012/RPG%20Loot%20Icons%2012%20Part%202.jpg"><img loading="lazy" src="preview/RPG%20Loot%20Icons%2012/RPG%20Loot%20Icons%2012%20Part%202.jpg"></a>
+  <div class="meta"><b>RPG Loot Icons 12/RPG Loot Icons 12 Part 2.jpg</b>
+  <span class="ok">ok · 10×5 · рамок 50 · conf 0.895</span></div>
+</div><div class="card" data-status="ok">
+  <a href="preview/RPG%20Loot%20Icons%2013/RPG%20Loot%20Icons%2013%20Part%201.jpg"><img loading="lazy" src="preview/RPG%20Loot%20Icons%2013/RPG%20Loot%20Icons%2013%20Part%201.jpg"></a>
+  <div class="meta"><b>RPG Loot Icons 13/RPG Loot Icons 13 Part 1.jpg</b>
+  <span class="ok">ok · 10×5 · рамок 50 · conf 0.913</span></div>
+</div><div class="card" data-status="ok">
+  <a href="preview/RPG%20Loot%20Icons%2013/RPG%20Loot%20Icons%2013%20Part%202.jpg"><img loading="lazy" src="preview/RPG%20Loot%20Icons%2013/RPG%20Loot%20Icons%2013%20Part%202.jpg"></a>
+  <div class="meta"><b>RPG Loot Icons 13/RPG Loot Icons 13 Part 2.jpg</b>
+  <span class="ok">ok · 10×5 · рамок 50 · conf 0.903</span></div>
+</div><div class="card" data-status="ok">
+  <a href="preview/RPG%20Loot%20Icons%2014/RPG%20Loot%20Icons%2014%20Part%201.jpg"><img loading="lazy" src="preview/RPG%20Loot%20Icons%2014/RPG%20Loot%20Icons%2014%20Part%201.jpg"></a>
+  <div class="meta"><b>RPG Loot Icons 14/RPG Loot Icons 14 Part 1.jpg</b>
+  <span class="ok">ok · 10×5 · рамок 50 · conf 0.925</span></div>
+</div><div class="card" data-status="ok">
+  <a href="preview/RPG%20Loot%20Icons%2014/RPG%20Loot%20Icons%2014%20Part%202.jpg"><img loading="lazy" src="preview/RPG%20Loot%20Icons%2014/RPG%20Loot%20Icons%2014%20Part%202.jpg"></a>
+  <div class="meta"><b>RPG Loot Icons 14/RPG Loot Icons 14 Part 2.jpg</b>
+  <span class="ok">ok · 10×5 · рамок 50 · conf 0.919</span></div>
+</div><div class="card" data-status="ok">
+  <a href="preview/RPG%20Loot%20Icons%2015/RPG%20Loot%20Icons%2015%20Part%201.jpg"><img loading="lazy" src="preview/RPG%20Loot%20Icons%2015/RPG%20Loot%20Icons%2015%20Part%201.jpg"></a>
+  <div class="meta"><b>RPG Loot Icons 15/RPG Loot Icons 15 Part 1.jpg</b>
+  <span class="ok">ok · 10×5 · рамок 50 · conf 0.887</span></div>
+</div><div class="card" data-status="ok">
+  <a href="preview/RPG%20Loot%20Icons%2015/RPG%20Loot%20Icons%2015%20Part%202.jpg"><img loading="lazy" src="preview/RPG%20Loot%20Icons%2015/RPG%20Loot%20Icons%2015%20Part%202.jpg"></a>
+  <div class="meta"><b>RPG Loot Icons 15/RPG Loot Icons 15 Part 2.jpg</b>
+  <span class="ok">ok · 10×5 · рамок 50 · conf 0.902</span></div>
+</div><div class="card" data-status="ok">
+  <a href="preview/RPG%20Loot%20Icons%2016/RPG%20Loot%20Icons%2016%20Part%201.jpg"><img loading="lazy" src="preview/RPG%20Loot%20Icons%2016/RPG%20Loot%20Icons%2016%20Part%201.jpg"></a>
+  <div class="meta"><b>RPG Loot Icons 16/RPG Loot Icons 16 Part 1.jpg</b>
+  <span class="ok">ok · 10×5 · рамок 50 · conf 0.931</span></div>
+</div><div class="card" data-status="ok">
+  <a href="preview/RPG%20Loot%20Icons%2016/RPG%20Loot%20Icons%2016%20Part%202.jpg"><img loading="lazy" src="preview/RPG%20Loot%20Icons%2016/RPG%20Loot%20Icons%2016%20Part%202.jpg"></a>
+  <div class="meta"><b>RPG Loot Icons 16/RPG Loot Icons 16 Part 2.jpg</b>
+  <span class="ok">ok · 10×5 · рамок 50 · conf 0.919</span></div>
+</div><div class="card" data-status="ok">
+  <a href="preview/RPG%20Loot%20Icons%2017/RPG%20Loot%20Icons%2017%20Part%201.jpg"><img loading="lazy" src="preview/RPG%20Loot%20Icons%2017/RPG%20Loot%20Icons%2017%20Part%201.jpg"></a>
+  <div class="meta"><b>RPG Loot Icons 17/RPG Loot Icons 17 Part 1.jpg</b>
+  <span class="ok">ok · 10×5 · рамок 50 · conf 0.906</span></div>
+</div><div class="card" data-status="ok">
+  <a href="preview/RPG%20Loot%20Icons%2017/RPG%20Loot%20Icons%2017%20Part%202.jpg"><img loading="lazy" src="preview/RPG%20Loot%20Icons%2017/RPG%20Loot%20Icons%2017%20Part%202.jpg"></a>
+  <div class="meta"><b>RPG Loot Icons 17/RPG Loot Icons 17 Part 2.jpg</b>
+  <span class="ok">ok · 10×5 · рамок 50 · conf 0.86</span></div>
+</div><div class="card" data-status="ok">
+  <a href="preview/RPG%20Loot%20Icons%2018/RPG%20Loot%20Icons%2018%20Part%201.jpg"><img loading="lazy" src="preview/RPG%20Loot%20Icons%2018/RPG%20Loot%20Icons%2018%20Part%201.jpg"></a>
+  <div class="meta"><b>RPG Loot Icons 18/RPG Loot Icons 18 Part 1.jpg</b>
+  <span class="ok">ok · 10×5 · рамок 50 · conf 0.888</span></div>
+</div><div class="card" data-status="ok">
+  <a href="preview/RPG%20Loot%20Icons%2018/RPG%20Loot%20Icons%2018%20Part%202.jpg"><img loading="lazy" src="preview/RPG%20Loot%20Icons%2018/RPG%20Loot%20Icons%2018%20Part%202.jpg"></a>
+  <div class="meta"><b>RPG Loot Icons 18/RPG Loot Icons 18 Part 2.jpg</b>
+  <span class="ok">ok · 10×5 · рамок 50 · conf 0.862</span></div>
+</div><div class="card" data-status="ok">
+  <a href="preview/RPG%20Loot%20Icons%2019/RPG%20Loot%20Icons%2019%20Part%201.jpg"><img loading="lazy" src="preview/RPG%20Loot%20Icons%2019/RPG%20Loot%20Icons%2019%20Part%201.jpg"></a>
+  <div class="meta"><b>RPG Loot Icons 19/RPG Loot Icons 19 Part 1.jpg</b>
+  <span class="ok">ok · 10×5 · рамок 50 · conf 0.903</span></div>
+</div><div class="card" data-status="ok">
+  <a href="preview/RPG%20Loot%20Icons%2019/RPG%20Loot%20Icons%2019%20Part%202.jpg"><img loading="lazy" src="preview/RPG%20Loot%20Icons%2019/RPG%20Loot%20Icons%2019%20Part%202.jpg"></a>
+  <div class="meta"><b>RPG Loot Icons 19/RPG Loot Icons 19 Part 2.jpg</b>
+  <span class="ok">ok · 10×5 · рамок 50 · conf 0.91</span></div>
+</div><div class="card" data-status="ok">
+  <a href="preview/RPG%20Loot%20Icons%2020/RPG%20Loot%20Icons%2020%20Part%201.jpg"><img loading="lazy" src="preview/RPG%20Loot%20Icons%2020/RPG%20Loot%20Icons%2020%20Part%201.jpg"></a>
+  <div class="meta"><b>RPG Loot Icons 20/RPG Loot Icons 20 Part 1.jpg</b>
+  <span class="ok">ok · 10×5 · рамок 50 · conf 0.9</span></div>
+</div><div class="card" data-status="ok">
+  <a href="preview/RPG%20Loot%20Icons%2020/RPG%20Loot%20Icons%2020%20Part%202.jpg"><img loading="lazy" src="preview/RPG%20Loot%20Icons%2020/RPG%20Loot%20Icons%2020%20Part%202.jpg"></a>
+  <div class="meta"><b>RPG Loot Icons 20/RPG Loot Icons 20 Part 2.jpg</b>
+  <span class="ok">ok · 10×5 · рамок 50 · conf 0.896</span></div>
+</div><div class="card" data-status="ok">
+  <a href="preview/RPG%20Loot%20Icons%2021/RPG%20Loot%20Icons%2021%20Part%201.jpg"><img loading="lazy" src="preview/RPG%20Loot%20Icons%2021/RPG%20Loot%20Icons%2021%20Part%201.jpg"></a>
+  <div class="meta"><b>RPG Loot Icons 21/RPG Loot Icons 21 Part 1.jpg</b>
+  <span class="ok">ok · 10×5 · рамок 50 · conf 0.916</span></div>
+</div><div class="card" data-status="ok">
+  <a href="preview/RPG%20Loot%20Icons%2021/RPG%20Loot%20Icons%2021%20Part%202.jpg"><img loading="lazy" src="preview/RPG%20Loot%20Icons%2021/RPG%20Loot%20Icons%2021%20Part%202.jpg"></a>
+  <div class="meta"><b>RPG Loot Icons 21/RPG Loot Icons 21 Part 2.jpg</b>
+  <span class="ok">ok · 10×5 · рамок 50 · conf 0.896</span></div>
+</div><div class="card" data-status="ok">
+  <a href="preview/RPG%20Loot%20Icons%2022/RPG%20Loot%20Icons%2022%20Part%201.jpg"><img loading="lazy" src="preview/RPG%20Loot%20Icons%2022/RPG%20Loot%20Icons%2022%20Part%201.jpg"></a>
+  <div class="meta"><b>RPG Loot Icons 22/RPG Loot Icons 22 Part 1.jpg</b>
+  <span class="ok">ok · 10×5 · рамок 50 · conf 0.907</span></div>
+</div><div class="card" data-status="ok">
+  <a href="preview/RPG%20Loot%20Icons%2022/RPG%20Loot%20Icons%2022%20Part%202.jpg"><img loading="lazy" src="preview/RPG%20Loot%20Icons%2022/RPG%20Loot%20Icons%2022%20Part%202.jpg"></a>
+  <div class="meta"><b>RPG Loot Icons 22/RPG Loot Icons 22 Part 2.jpg</b>
+  <span class="ok">ok · 10×5 · рамок 50 · conf 0.912</span></div>
+</div><div class="card" data-status="ok">
+  <a href="preview/RPG%20Loot%20Icons%2023/RPG%20Loot%20Icons%2023%20Part%201.jpg"><img loading="lazy" src="preview/RPG%20Loot%20Icons%2023/RPG%20Loot%20Icons%2023%20Part%201.jpg"></a>
+  <div class="meta"><b>RPG Loot Icons 23/RPG Loot Icons 23 Part 1.jpg</b>
+  <span class="ok">ok · 10×5 · рамок 50 · conf 0.917</span></div>
+</div><div class="card" data-status="ok">
+  <a href="preview/RPG%20Loot%20Icons%2023/RPG%20Loot%20Icons%2023%20Part%202.jpg"><img loading="lazy" src="preview/RPG%20Loot%20Icons%2023/RPG%20Loot%20Icons%2023%20Part%202.jpg"></a>
+  <div class="meta"><b>RPG Loot Icons 23/RPG Loot Icons 23 Part 2.jpg</b>
+  <span class="ok">ok · 10×5 · рамок 50 · conf 0.918</span></div>
+</div><div class="card" data-status="ok">
+  <a href="preview/RPG%20Loot%20Icons%2024/RPG%20Loot%20Icons%2024%20Part%201.jpg"><img loading="lazy" src="preview/RPG%20Loot%20Icons%2024/RPG%20Loot%20Icons%2024%20Part%201.jpg"></a>
+  <div class="meta"><b>RPG Loot Icons 24/RPG Loot Icons 24 Part 1.jpg</b>
+  <span class="ok">ok · 10×5 · рамок 50 · conf 0.884</span></div>
+</div><div class="card" data-status="ok">
+  <a href="preview/RPG%20Loot%20Icons%2024/RPG%20Loot%20Icons%2024%20Part%202.jpg"><img loading="lazy" src="preview/RPG%20Loot%20Icons%2024/RPG%20Loot%20Icons%2024%20Part%202.jpg"></a>
+  <div class="meta"><b>RPG Loot Icons 24/RPG Loot Icons 24 Part 2.jpg</b>
+  <span class="ok">ok · 10×5 · рамок 50 · conf 0.91</span></div>
+</div><div class="card" data-status="ok">
+  <a href="preview/RPG%20Loot%20Icons%2025/RPG%20Loot%20Icons%2025%20Part%201.jpg"><img loading="lazy" src="preview/RPG%20Loot%20Icons%2025/RPG%20Loot%20Icons%2025%20Part%201.jpg"></a>
+  <div class="meta"><b>RPG Loot Icons 25/RPG Loot Icons 25 Part 1.jpg</b>
+  <span class="ok">ok · 10×5 · рамок 50 · conf 0.924</span></div>
+</div><div class="card" data-status="ok">
+  <a href="preview/RPG%20Loot%20Icons%2025/RPG%20Loot%20Icons%2025%20Part%202.jpg"><img loading="lazy" src="preview/RPG%20Loot%20Icons%2025/RPG%20Loot%20Icons%2025%20Part%202.jpg"></a>
+  <div class="meta"><b>RPG Loot Icons 25/RPG Loot Icons 25 Part 2.jpg</b>
+  <span class="ok">ok · 10×5 · рамок 50 · conf 0.935</span></div>
+</div><div class="card" data-status="ok">
+  <a href="preview/RPG%20Loot%20Icons%2026/RPG%20Loot%20Icons%2026%20Part%201.jpg"><img loading="lazy" src="preview/RPG%20Loot%20Icons%2026/RPG%20Loot%20Icons%2026%20Part%201.jpg"></a>
+  <div class="meta"><b>RPG Loot Icons 26/RPG Loot Icons 26 Part 1.jpg</b>
+  <span class="ok">ok · 10×5 · рамок 50 · conf 0.888</span></div>
+</div><div class="card" data-status="ok">
+  <a href="preview/RPG%20Loot%20Icons%2026/RPG%20Loot%20Icons%2026%20Part%202.jpg"><img loading="lazy" src="preview/RPG%20Loot%20Icons%2026/RPG%20Loot%20Icons%2026%20Part%202.jpg"></a>
+  <div class="meta"><b>RPG Loot Icons 26/RPG Loot Icons 26 Part 2.jpg</b>
+  <span class="ok">ok · 10×5 · рамок 50 · conf 0.925</span></div>
+</div><div class="card" data-status="ok">
+  <a href="preview/RPG%20Loot%20Icons%2027/RPG%20Loot%20Icons%2027%20Part%201.jpg"><img loading="lazy" src="preview/RPG%20Loot%20Icons%2027/RPG%20Loot%20Icons%2027%20Part%201.jpg"></a>
+  <div class="meta"><b>RPG Loot Icons 27/RPG Loot Icons 27 Part 1.jpg</b>
+  <span class="ok">ok · 10×5 · рамок 50 · conf 0.924</span></div>
+</div><div class="card" data-status="ok">
+  <a href="preview/RPG%20Loot%20Icons%2027/RPG%20Loot%20Icons%2027%20Part%202.jpg"><img loading="lazy" src="preview/RPG%20Loot%20Icons%2027/RPG%20Loot%20Icons%2027%20Part%202.jpg"></a>
+  <div class="meta"><b>RPG Loot Icons 27/RPG Loot Icons 27 Part 2.jpg</b>
+  <span class="ok">ok · 10×5 · рамок 50 · conf 0.92</span></div>
+</div><div class="card" data-status="ok">
+  <a href="preview/RPG%20Loot%20Icons%2028/RPG%20Loot%20Icons%2028%20Part%201.jpg"><img loading="lazy" src="preview/RPG%20Loot%20Icons%2028/RPG%20Loot%20Icons%2028%20Part%201.jpg"></a>
+  <div class="meta"><b>RPG Loot Icons 28/RPG Loot Icons 28 Part 1.jpg</b>
+  <span class="ok">ok · 10×5 · рамок 50 · conf 0.887</span></div>
+</div><div class="card" data-status="ok">
+  <a href="preview/RPG%20Loot%20Icons%2028/RPG%20Loot%20Icons%2028%20Part%202.jpg"><img loading="lazy" src="preview/RPG%20Loot%20Icons%2028/RPG%20Loot%20Icons%2028%20Part%202.jpg"></a>
+  <div class="meta"><b>RPG Loot Icons 28/RPG Loot Icons 28 Part 2.jpg</b>
+  <span class="ok">ok · 10×5 · рамок 50 · conf 0.883</span></div>
+</div><div class="card" data-status="ok">
+  <a href="preview/RPG%20Loot%20Icons%2029/RPG%20Loot%20Icons%2029%20Part%201.jpg"><img loading="lazy" src="preview/RPG%20Loot%20Icons%2029/RPG%20Loot%20Icons%2029%20Part%201.jpg"></a>
+  <div class="meta"><b>RPG Loot Icons 29/RPG Loot Icons 29 Part 1.jpg</b>
+  <span class="ok">ok · 10×5 · рамок 50 · conf 0.856</span></div>
+</div><div class="card" data-status="ok">
+  <a href="preview/RPG%20Loot%20Icons%2029/RPG%20Loot%20Icons%2029%20Part%202.jpg"><img loading="lazy" src="preview/RPG%20Loot%20Icons%2029/RPG%20Loot%20Icons%2029%20Part%202.jpg"></a>
+  <div class="meta"><b>RPG Loot Icons 29/RPG Loot Icons 29 Part 2.jpg</b>
+  <span class="ok">ok · 10×5 · рамок 50 · conf 0.871</span></div>
+</div><div class="card" data-status="ok">
+  <a href="preview/RPG%20Loot%20Icons%2030/RPG%20Loot%20Icons%2030%20Part%201.jpg"><img loading="lazy" src="preview/RPG%20Loot%20Icons%2030/RPG%20Loot%20Icons%2030%20Part%201.jpg"></a>
+  <div class="meta"><b>RPG Loot Icons 30/RPG Loot Icons 30 Part 1.jpg</b>
+  <span class="ok">ok · 10×5 · рамок 50 · conf 0.868</span></div>
+</div><div class="card" data-status="ok">
+  <a href="preview/RPG%20Loot%20Icons%2030/RPG%20Loot%20Icons%2030%20Part%202.jpg"><img loading="lazy" src="preview/RPG%20Loot%20Icons%2030/RPG%20Loot%20Icons%2030%20Part%202.jpg"></a>
+  <div class="meta"><b>RPG Loot Icons 30/RPG Loot Icons 30 Part 2.jpg</b>
+  <span class="ok">ok · 10×5 · рамок 50 · conf 0.861</span></div>
+</div><div class="card" data-status="ok">
+  <a href="preview/RPG%20Loot%20Icons%2031/RPG%20Loot%20Icons%2031%20Part%201.jpg"><img loading="lazy" src="preview/RPG%20Loot%20Icons%2031/RPG%20Loot%20Icons%2031%20Part%201.jpg"></a>
+  <div class="meta"><b>RPG Loot Icons 31/RPG Loot Icons 31 Part 1.jpg</b>
+  <span class="ok">ok · 10×5 · рамок 50 · conf 0.877</span></div>
+</div><div class="card" data-status="ok">
+  <a href="preview/RPG%20Loot%20Icons%2031/RPG%20Loot%20Icons%2031%20Part%202.jpg"><img loading="lazy" src="preview/RPG%20Loot%20Icons%2031/RPG%20Loot%20Icons%2031%20Part%202.jpg"></a>
+  <div class="meta"><b>RPG Loot Icons 31/RPG Loot Icons 31 Part 2.jpg</b>
+  <span class="ok">ok · 10×5 · рамок 50 · conf 0.882</span></div>
+</div><div class="card" data-status="ok">
+  <a href="preview/RPG%20Loot%20Icons%2032/RPG%20Loot%20Icons%2032%20Part%201.jpg"><img loading="lazy" src="preview/RPG%20Loot%20Icons%2032/RPG%20Loot%20Icons%2032%20Part%201.jpg"></a>
+  <div class="meta"><b>RPG Loot Icons 32/RPG Loot Icons 32 Part 1.jpg</b>
+  <span class="ok">ok · 10×5 · рамок 50 · conf 0.879</span></div>
+</div><div class="card" data-status="ok">
+  <a href="preview/RPG%20Loot%20Icons%2032/RPG%20Loot%20Icons%2032%20Part%202.jpg"><img loading="lazy" src="preview/RPG%20Loot%20Icons%2032/RPG%20Loot%20Icons%2032%20Part%202.jpg"></a>
+  <div class="meta"><b>RPG Loot Icons 32/RPG Loot Icons 32 Part 2.jpg</b>
+  <span class="ok">ok · 10×5 · рамок 50 · conf 0.873</span></div>
+</div><div class="card" data-status="ok">
+  <a href="preview/RPG%20Loot%20Icons%2033/RPG%20Loot%20Icons%2033%20Part%201.jpg"><img loading="lazy" src="preview/RPG%20Loot%20Icons%2033/RPG%20Loot%20Icons%2033%20Part%201.jpg"></a>
+  <div class="meta"><b>RPG Loot Icons 33/RPG Loot Icons 33 Part 1.jpg</b>
+  <span class="ok">ok · 10×5 · рамок 50 · conf 0.876</span></div>
+</div><div class="card" data-status="ok">
+  <a href="preview/RPG%20Loot%20Icons%2033/RPG%20Loot%20Icons%2033%20Part%202.jpg"><img loading="lazy" src="preview/RPG%20Loot%20Icons%2033/RPG%20Loot%20Icons%2033%20Part%202.jpg"></a>
+  <div class="meta"><b>RPG Loot Icons 33/RPG Loot Icons 33 Part 2.jpg</b>
+  <span class="ok">ok · 10×5 · рамок 50 · conf 0.859</span></div>
+</div><div class="card" data-status="ok">
+  <a href="preview/RPG%20Loot%20Icons%2034/RPG%20Loot%20Icons%2034%20Part%201.jpg"><img loading="lazy" src="preview/RPG%20Loot%20Icons%2034/RPG%20Loot%20Icons%2034%20Part%201.jpg"></a>
+  <div class="meta"><b>RPG Loot Icons 34/RPG Loot Icons 34 Part 1.jpg</b>
+  <span class="ok">ok · 10×5 · рамок 50 · conf 0.901</span></div>
+</div><div class="card" data-status="ok">
+  <a href="preview/RPG%20Loot%20Icons%2034/RPG%20Loot%20Icons%2034%20Part%202.jpg"><img loading="lazy" src="preview/RPG%20Loot%20Icons%2034/RPG%20Loot%20Icons%2034%20Part%202.jpg"></a>
+  <div class="meta"><b>RPG Loot Icons 34/RPG Loot Icons 34 Part 2.jpg</b>
+  <span class="ok">ok · 10×5 · рамок 50 · conf 0.886</span></div>
+</div><div class="card" data-status="ok">
+  <a href="preview/RPG%20Loot%20Icons%2035/RPG%20Loot%20Icons%2035%20Part%201.jpg"><img loading="lazy" src="preview/RPG%20Loot%20Icons%2035/RPG%20Loot%20Icons%2035%20Part%201.jpg"></a>
+  <div class="meta"><b>RPG Loot Icons 35/RPG Loot Icons 35 Part 1.jpg</b>
+  <span class="ok">ok · 10×5 · рамок 50 · conf 0.91</span></div>
+</div><div class="card" data-status="ok">
+  <a href="preview/RPG%20Loot%20Icons%2035/RPG%20Loot%20Icons%2035%20Part%202.jpg"><img loading="lazy" src="preview/RPG%20Loot%20Icons%2035/RPG%20Loot%20Icons%2035%20Part%202.jpg"></a>
+  <div class="meta"><b>RPG Loot Icons 35/RPG Loot Icons 35 Part 2.jpg</b>
+  <span class="ok">ok · 10×5 · рамок 50 · conf 0.89</span></div>
+</div><div class="card" data-status="ok">
+  <a href="preview/RPG%20Loot%20Icons%2036/RPG%20Loot%20Icons%2036%20Part%201.jpg"><img loading="lazy" src="preview/RPG%20Loot%20Icons%2036/RPG%20Loot%20Icons%2036%20Part%201.jpg"></a>
+  <div class="meta"><b>RPG Loot Icons 36/RPG Loot Icons 36 Part 1.jpg</b>
+  <span class="ok">ok · 10×5 · рамок 50 · conf 0.885</span></div>
+</div><div class="card" data-status="ok">
+  <a href="preview/RPG%20Loot%20Icons%2036/RPG%20Loot%20Icons%2036%20Part%202.jpg"><img loading="lazy" src="preview/RPG%20Loot%20Icons%2036/RPG%20Loot%20Icons%2036%20Part%202.jpg"></a>
+  <div class="meta"><b>RPG Loot Icons 36/RPG Loot Icons 36 Part 2.jpg</b>
+  <span class="ok">ok · 10×5 · рамок 50 · conf 0.884</span></div>
+</div><div class="card" data-status="ok">
+  <a href="preview/RPG%20Loot%20Icons%2037/RPG%20Loot%20Icons%2037%20Part%201.jpg"><img loading="lazy" src="preview/RPG%20Loot%20Icons%2037/RPG%20Loot%20Icons%2037%20Part%201.jpg"></a>
+  <div class="meta"><b>RPG Loot Icons 37/RPG Loot Icons 37 Part 1.jpg</b>
+  <span class="ok">ok · 10×5 · рамок 50 · conf 0.889</span></div>
+</div><div class="card" data-status="ok">
+  <a href="preview/RPG%20Loot%20Icons%2037/RPG%20Loot%20Icons%2037%20Part%202.jpg"><img loading="lazy" src="preview/RPG%20Loot%20Icons%2037/RPG%20Loot%20Icons%2037%20Part%202.jpg"></a>
+  <div class="meta"><b>RPG Loot Icons 37/RPG Loot Icons 37 Part 2.jpg</b>
+  <span class="ok">ok · 10×5 · рамок 50 · conf 0.899</span></div>
+</div><div class="card" data-status="ok">
+  <a href="preview/RPG%20Loot%20Icons%2038/RPG%20Loot%20Icons%2038%20Part%201.jpg"><img loading="lazy" src="preview/RPG%20Loot%20Icons%2038/RPG%20Loot%20Icons%2038%20Part%201.jpg"></a>
+  <div class="meta"><b>RPG Loot Icons 38/RPG Loot Icons 38 Part 1.jpg</b>
+  <span class="ok">ok · 10×5 · рамок 50 · conf 0.893</span></div>
+</div><div class="card" data-status="ok">
+  <a href="preview/RPG%20Loot%20Icons%2038/RPG%20Loot%20Icons%2038%20Part%202.jpg"><img loading="lazy" src="preview/RPG%20Loot%20Icons%2038/RPG%20Loot%20Icons%2038%20Part%202.jpg"></a>
+  <div class="meta"><b>RPG Loot Icons 38/RPG Loot Icons 38 Part 2.jpg</b>
+  <span class="ok">ok · 10×5 · рамок 50 · conf 0.915</span></div>
+</div><div class="card" data-status="no_frames">
+  <a href="preview/RPG%20Loot%20Icons%2039/RPG%20Loot%20Icons%2039%20Part%201.jpg"><img loading="lazy" src="preview/RPG%20Loot%20Icons%2039/RPG%20Loot%20Icons%2039%20Part%201.jpg"></a>
+  <div class="meta"><b>RPG Loot Icons 39/RPG Loot Icons 39 Part 1.jpg</b>
+  <span class="nofr">no_frames · 10×5 · рамок 0 · conf 0.0</span></div>
+</div><div class="card" data-status="no_frames">
+  <a href="preview/RPG%20Loot%20Icons%2039/RPG%20Loot%20Icons%2039%20Part%202.jpg"><img loading="lazy" src="preview/RPG%20Loot%20Icons%2039/RPG%20Loot%20Icons%2039%20Part%202.jpg"></a>
+  <div class="meta"><b>RPG Loot Icons 39/RPG Loot Icons 39 Part 2.jpg</b>
+  <span class="nofr">no_frames · 10×5 · рамок 0 · conf 0.002</span></div>
+</div><div class="card" data-status="no_frames">
+  <a href="preview/RPG%20Loot%20Icons%2040/RPG%20Loot%20Icons%2040%20Part%201.jpg"><img loading="lazy" src="preview/RPG%20Loot%20Icons%2040/RPG%20Loot%20Icons%2040%20Part%201.jpg"></a>
+  <div class="meta"><b>RPG Loot Icons 40/RPG Loot Icons 40 Part 1.jpg</b>
+  <span class="nofr">no_frames · 10×5 · рамок 0 · conf 0.002</span></div>
+</div><div class="card" data-status="no_frames">
+  <a href="preview/RPG%20Loot%20Icons%2040/RPG%20Loot%20Icons%2040%20Part%202.jpg"><img loading="lazy" src="preview/RPG%20Loot%20Icons%2040/RPG%20Loot%20Icons%2040%20Part%202.jpg"></a>
+  <div class="meta"><b>RPG Loot Icons 40/RPG Loot Icons 40 Part 2.jpg</b>
+  <span class="nofr">no_frames · 10×5 · рамок 0 · conf 0.004</span></div>
+</div><div class="card" data-status="ok">
+  <a href="preview/RPG%20Loot%20Icons%2041/RPG%20Loot%20Icons%2041%20Part%201.jpg"><img loading="lazy" src="preview/RPG%20Loot%20Icons%2041/RPG%20Loot%20Icons%2041%20Part%201.jpg"></a>
+  <div class="meta"><b>RPG Loot Icons 41/RPG Loot Icons 41 Part 1.jpg</b>
+  <span class="ok">ok · 10×5 · рамок 50 · conf 0.932</span></div>
+</div><div class="card" data-status="ok">
+  <a href="preview/RPG%20Loot%20Icons%2041/RPG%20Loot%20Icons%2041%20Part%202.jpg"><img loading="lazy" src="preview/RPG%20Loot%20Icons%2041/RPG%20Loot%20Icons%2041%20Part%202.jpg"></a>
+  <div class="meta"><b>RPG Loot Icons 41/RPG Loot Icons 41 Part 2.jpg</b>
+  <span class="ok">ok · 10×5 · рамок 50 · conf 0.913</span></div>
+</div><div class="card" data-status="ok">
+  <a href="preview/RPG%20Potion%20Icons%2001/file%20%2883%29.jpg"><img loading="lazy" src="preview/RPG%20Potion%20Icons%2001/file%20%2883%29.jpg"></a>
+  <div class="meta"><b>RPG Potion Icons 01/file (83).jpg</b>
+  <span class="ok">ok · 10×5 · рамок 50 · conf 0.88</span></div>
+</div><div class="card" data-status="ok">
+  <a href="preview/RPG%20Potion%20Icons%2001/file%20%2884%29.jpg"><img loading="lazy" src="preview/RPG%20Potion%20Icons%2001/file%20%2884%29.jpg"></a>
+  <div class="meta"><b>RPG Potion Icons 01/file (84).jpg</b>
+  <span class="ok">ok · 10×5 · рамок 50 · conf 0.914</span></div>
+</div><div class="card" data-status="ok">
+  <a href="preview/RPG%20Potion%20Icons%2002/file%20%2883%29.jpg"><img loading="lazy" src="preview/RPG%20Potion%20Icons%2002/file%20%2883%29.jpg"></a>
+  <div class="meta"><b>RPG Potion Icons 02/file (83).jpg</b>
+  <span class="ok">ok · 10×5 · рамок 50 · conf 0.938</span></div>
+</div><div class="card" data-status="ok">
+  <a href="preview/RPG%20Potion%20Icons%2002/file%20%2884%29.jpg"><img loading="lazy" src="preview/RPG%20Potion%20Icons%2002/file%20%2884%29.jpg"></a>
+  <div class="meta"><b>RPG Potion Icons 02/file (84).jpg</b>
+  <span class="ok">ok · 10×5 · рамок 50 · conf 0.922</span></div>
+</div><div class="card" data-status="ok">
+  <a href="preview/RPG%20Potion%20Icons%2003/file%20%2883%29.jpg"><img loading="lazy" src="preview/RPG%20Potion%20Icons%2003/file%20%2883%29.jpg"></a>
+  <div class="meta"><b>RPG Potion Icons 03/file (83).jpg</b>
+  <span class="ok">ok · 10×5 · рамок 50 · conf 0.888</span></div>
+</div><div class="card" data-status="ok">
+  <a href="preview/RPG%20Potion%20Icons%2003/file%20%2884%29.jpg"><img loading="lazy" src="preview/RPG%20Potion%20Icons%2003/file%20%2884%29.jpg"></a>
+  <div class="meta"><b>RPG Potion Icons 03/file (84).jpg</b>
+  <span class="ok">ok · 10×5 · рамок 50 · conf 0.917</span></div>
+</div><div class="card" data-status="ok">
+  <a href="preview/RPG%20Tailoring%20Icons/file%20%2884%29.jpg"><img loading="lazy" src="preview/RPG%20Tailoring%20Icons/file%20%2884%29.jpg"></a>
+  <div class="meta"><b>RPG Tailoring Icons/file (84).jpg</b>
+  <span class="ok">ok · 10×5 · рамок 50 · conf 0.959</span></div>
+</div><div class="card" data-status="ok">
+  <a href="preview/RPG%20Tailoring%20Icons/file%20%2885%29.jpg"><img loading="lazy" src="preview/RPG%20Tailoring%20Icons/file%20%2885%29.jpg"></a>
+  <div class="meta"><b>RPG Tailoring Icons/file (85).jpg</b>
+  <span class="ok">ok · 10×5 · рамок 50 · conf 0.941</span></div>
+</div><div class="card" data-status="ok">
+  <a href="preview/RPG%20Vampire%20Icons/file%20%2884%29.jpg"><img loading="lazy" src="preview/RPG%20Vampire%20Icons/file%20%2884%29.jpg"></a>
+  <div class="meta"><b>RPG Vampire Icons/file (84).jpg</b>
+  <span class="ok">ok · 10×5 · рамок 50 · conf 0.883</span></div>
+</div><div class="card" data-status="ok">
+  <a href="preview/RPG%20Vampire%20Icons/file%20%2885%29.jpg"><img loading="lazy" src="preview/RPG%20Vampire%20Icons/file%20%2885%29.jpg"></a>
+  <div class="meta"><b>RPG Vampire Icons/file (85).jpg</b>
+  <span class="ok">ok · 10×5 · рамок 50 · conf 0.876</span></div>
+</div><div class="card" data-status="ok">
+  <a href="preview/RPG%20Weapon%20Icons%2001/file%20%2883%29.jpg"><img loading="lazy" src="preview/RPG%20Weapon%20Icons%2001/file%20%2883%29.jpg"></a>
+  <div class="meta"><b>RPG Weapon Icons 01/file (83).jpg</b>
+  <span class="ok">ok · 10×5 · рамок 50 · conf 0.912</span></div>
+</div><div class="card" data-status="ok">
+  <a href="preview/RPG%20Weapon%20Icons%2001/file%20%2884%29.jpg"><img loading="lazy" src="preview/RPG%20Weapon%20Icons%2001/file%20%2884%29.jpg"></a>
+  <div class="meta"><b>RPG Weapon Icons 01/file (84).jpg</b>
+  <span class="ok">ok · 10×5 · рамок 50 · conf 0.924</span></div>
+</div><div class="card" data-status="ok">
+  <a href="preview/RPG%20Weapon%20Icons%2002/file%20%2883%29.jpg"><img loading="lazy" src="preview/RPG%20Weapon%20Icons%2002/file%20%2883%29.jpg"></a>
+  <div class="meta"><b>RPG Weapon Icons 02/file (83).jpg</b>
+  <span class="ok">ok · 10×5 · рамок 50 · conf 0.899</span></div>
+</div><div class="card" data-status="ok">
+  <a href="preview/RPG%20Weapon%20Icons%2002/file%20%2884%29.jpg"><img loading="lazy" src="preview/RPG%20Weapon%20Icons%2002/file%20%2884%29.jpg"></a>
+  <div class="meta"><b>RPG Weapon Icons 02/file (84).jpg</b>
+  <span class="ok">ok · 10×5 · рамок 50 · conf 0.929</span></div>
+</div><div class="card" data-status="ok">
+  <a href="preview/RPG%20Weapon%20Icons%2003/file%20%2883%29.jpg"><img loading="lazy" src="preview/RPG%20Weapon%20Icons%2003/file%20%2883%29.jpg"></a>
+  <div class="meta"><b>RPG Weapon Icons 03/file (83).jpg</b>
+  <span class="ok">ok · 10×5 · рамок 50 · conf 0.942</span></div>
+</div><div class="card" data-status="ok">
+  <a href="preview/RPG%20Weapon%20Icons%2003/file%20%2884%29.jpg"><img loading="lazy" src="preview/RPG%20Weapon%20Icons%2003/file%20%2884%29.jpg"></a>
+  <div class="meta"><b>RPG Weapon Icons 03/file (84).jpg</b>
+  <span class="ok">ok · 10×5 · рамок 50 · conf 0.939</span></div>
+</div><div class="card" data-status="ok">
+  <a href="preview/RPG%20Weapon%20Icons%2004/file%20%2883%29.jpg"><img loading="lazy" src="preview/RPG%20Weapon%20Icons%2004/file%20%2883%29.jpg"></a>
+  <div class="meta"><b>RPG Weapon Icons 04/file (83).jpg</b>
+  <span class="ok">ok · 10×5 · рамок 50 · conf 0.918</span></div>
+</div><div class="card" data-status="ok">
+  <a href="preview/RPG%20Weapon%20Icons%2004/file%20%2884%29.jpg"><img loading="lazy" src="preview/RPG%20Weapon%20Icons%2004/file%20%2884%29.jpg"></a>
+  <div class="meta"><b>RPG Weapon Icons 04/file (84).jpg</b>
+  <span class="ok">ok · 10×5 · рамок 50 · conf 0.912</span></div>
+</div><div class="card" data-status="ok">
+  <a href="preview/RPG%20Weapon%20Icons%2005/file%20%2883%29.jpg"><img loading="lazy" src="preview/RPG%20Weapon%20Icons%2005/file%20%2883%29.jpg"></a>
+  <div class="meta"><b>RPG Weapon Icons 05/file (83).jpg</b>
+  <span class="ok">ok · 10×5 · рамок 50 · conf 0.885</span></div>
+</div><div class="card" data-status="ok">
+  <a href="preview/RPG%20Weapon%20Icons%2005/file%20%2884%29.jpg"><img loading="lazy" src="preview/RPG%20Weapon%20Icons%2005/file%20%2884%29.jpg"></a>
+  <div class="meta"><b>RPG Weapon Icons 05/file (84).jpg</b>
+  <span class="ok">ok · 10×5 · рамок 50 · conf 0.899</span></div>
+</div><div class="card" data-status="ok">
+  <a href="preview/RPG%20Weapon%20Icons%2006/file%20%2883%29.jpg"><img loading="lazy" src="preview/RPG%20Weapon%20Icons%2006/file%20%2883%29.jpg"></a>
+  <div class="meta"><b>RPG Weapon Icons 06/file (83).jpg</b>
+  <span class="ok">ok · 10×5 · рамок 50 · conf 0.907</span></div>
+</div><div class="card" data-status="ok">
+  <a href="preview/RPG%20Weapon%20Icons%2006/file%20%2884%29.jpg"><img loading="lazy" src="preview/RPG%20Weapon%20Icons%2006/file%20%2884%29.jpg"></a>
+  <div class="meta"><b>RPG Weapon Icons 06/file (84).jpg</b>
+  <span class="ok">ok · 10×5 · рамок 50 · conf 0.912</span></div>
+</div><div class="card" data-status="ok">
+  <a href="preview/RPG%20Weapon%20Icons%2007/file%20%2883%29.jpg"><img loading="lazy" src="preview/RPG%20Weapon%20Icons%2007/file%20%2883%29.jpg"></a>
+  <div class="meta"><b>RPG Weapon Icons 07/file (83).jpg</b>
+  <span class="ok">ok · 10×5 · рамок 50 · conf 0.91</span></div>
+</div><div class="card" data-status="ok">
+  <a href="preview/RPG%20Weapon%20Icons%2007/file%20%2884%29.jpg"><img loading="lazy" src="preview/RPG%20Weapon%20Icons%2007/file%20%2884%29.jpg"></a>
+  <div class="meta"><b>RPG Weapon Icons 07/file (84).jpg</b>
+  <span class="ok">ok · 10×5 · рамок 50 · conf 0.924</span></div>
+</div><div class="card" data-status="ok">
+  <a href="preview/RPG%20Weapon%20Icons%2008/file%20%2883%29.jpg"><img loading="lazy" src="preview/RPG%20Weapon%20Icons%2008/file%20%2883%29.jpg"></a>
+  <div class="meta"><b>RPG Weapon Icons 08/file (83).jpg</b>
+  <span class="ok">ok · 10×5 · рамок 50 · conf 0.909</span></div>
+</div><div class="card" data-status="ok">
+  <a href="preview/RPG%20Weapon%20Icons%2008/file%20%2884%29.jpg"><img loading="lazy" src="preview/RPG%20Weapon%20Icons%2008/file%20%2884%29.jpg"></a>
+  <div class="meta"><b>RPG Weapon Icons 08/file (84).jpg</b>
+  <span class="ok">ok · 10×5 · рамок 50 · conf 0.917</span></div>
+</div><div class="card" data-status="no_frames">
+  <a href="preview/RPG%20Weapon%20Icons%2009/file%20%2883%29.jpg"><img loading="lazy" src="preview/RPG%20Weapon%20Icons%2009/file%20%2883%29.jpg"></a>
+  <div class="meta"><b>RPG Weapon Icons 09/file (83).jpg</b>
+  <span class="nofr">no_frames · 10×5 · рамок 0 · conf 0.0</span></div>
+</div><div class="card" data-status="no_frames">
+  <a href="preview/RPG%20Weapon%20Icons%2009/file%20%2884%29.jpg"><img loading="lazy" src="preview/RPG%20Weapon%20Icons%2009/file%20%2884%29.jpg"></a>
+  <div class="meta"><b>RPG Weapon Icons 09/file (84).jpg</b>
+  <span class="nofr">no_frames · 10×5 · рамок 0 · conf 0.0</span></div>
+</div><div class="card" data-status="ok">
+  <a href="preview/RPG%20Weapon%20and%20Armor%2001/file%20%2884%29.jpg"><img loading="lazy" src="preview/RPG%20Weapon%20and%20Armor%2001/file%20%2884%29.jpg"></a>
+  <div class="meta"><b>RPG Weapon and Armor 01/file (84).jpg</b>
+  <span class="ok">ok · 10×5 · рамок 50 · conf 0.737</span></div>
+</div><div class="card" data-status="ok">
+  <a href="preview/RPG%20Weapon%20and%20Armor%2001/file%20%2885%29.jpg"><img loading="lazy" src="preview/RPG%20Weapon%20and%20Armor%2001/file%20%2885%29.jpg"></a>
+  <div class="meta"><b>RPG Weapon and Armor 01/file (85).jpg</b>
+  <span class="ok">ok · 10×5 · рамок 50 · conf 0.848</span></div>
+</div><div class="card" data-status="ok">
+  <a href="preview/RPG%20Weapon%20and%20Armor%2002/file%20%2884%29.jpg"><img loading="lazy" src="preview/RPG%20Weapon%20and%20Armor%2002/file%20%2884%29.jpg"></a>
+  <div class="meta"><b>RPG Weapon and Armor 02/file (84).jpg</b>
+  <span class="ok">ok · 10×5 · рамок 50 · conf 0.873</span></div>
+</div><div class="card" data-status="ok">
+  <a href="preview/RPG%20Weapon%20and%20Armor%2002/file%20%2885%29.jpg"><img loading="lazy" src="preview/RPG%20Weapon%20and%20Armor%2002/file%20%2885%29.jpg"></a>
+  <div class="meta"><b>RPG Weapon and Armor 02/file (85).jpg</b>
+  <span class="ok">ok · 10×5 · рамок 50 · conf 0.832</span></div>
+</div><div class="card" data-status="ok">
+  <a href="preview/RPG%20Weapon%20and%20Armor%2003/file%20%2884%29.jpg"><img loading="lazy" src="preview/RPG%20Weapon%20and%20Armor%2003/file%20%2884%29.jpg"></a>
+  <div class="meta"><b>RPG Weapon and Armor 03/file (84).jpg</b>
+  <span class="ok">ok · 10×5 · рамок 50 · conf 0.871</span></div>
+</div><div class="card" data-status="ok">
+  <a href="preview/RPG%20Weapon%20and%20Armor%2003/file%20%2885%29.jpg"><img loading="lazy" src="preview/RPG%20Weapon%20and%20Armor%2003/file%20%2885%29.jpg"></a>
+  <div class="meta"><b>RPG Weapon and Armor 03/file (85).jpg</b>
+  <span class="ok">ok · 10×5 · рамок 50 · conf 0.846</span></div>
+</div><div class="card" data-status="ok">
+  <a href="preview/RPG%20Weapon%20and%20Armor%2004/file%20%2884%29.jpg"><img loading="lazy" src="preview/RPG%20Weapon%20and%20Armor%2004/file%20%2884%29.jpg"></a>
+  <div class="meta"><b>RPG Weapon and Armor 04/file (84).jpg</b>
+  <span class="ok">ok · 10×5 · рамок 50 · conf 0.934</span></div>
+</div><div class="card" data-status="ok">
+  <a href="preview/RPG%20Weapon%20and%20Armor%2004/file%20%2885%29.jpg"><img loading="lazy" src="preview/RPG%20Weapon%20and%20Armor%2004/file%20%2885%29.jpg"></a>
+  <div class="meta"><b>RPG Weapon and Armor 04/file (85).jpg</b>
+  <span class="ok">ok · 10×5 · рамок 50 · conf 0.843</span></div>
+</div><div class="card" data-status="ok">
+  <a href="preview/RPG%20Weapon%20and%20Armor%2005/file%20%2884%29.jpg"><img loading="lazy" src="preview/RPG%20Weapon%20and%20Armor%2005/file%20%2884%29.jpg"></a>
+  <div class="meta"><b>RPG Weapon and Armor 05/file (84).jpg</b>
+  <span class="ok">ok · 10×5 · рамок 50 · conf 0.865</span></div>
+</div><div class="card" data-status="ok">
+  <a href="preview/RPG%20Weapon%20and%20Armor%2005/file%20%2885%29.jpg"><img loading="lazy" src="preview/RPG%20Weapon%20and%20Armor%2005/file%20%2885%29.jpg"></a>
+  <div class="meta"><b>RPG Weapon and Armor 05/file (85).jpg</b>
+  <span class="ok">ok · 10×5 · рамок 50 · conf 0.945</span></div>
+</div><div class="card" data-status="ok">
+  <a href="preview/RPG%20Weapon%20and%20Armor%2006/file%20%2884%29.jpg"><img loading="lazy" src="preview/RPG%20Weapon%20and%20Armor%2006/file%20%2884%29.jpg"></a>
+  <div class="meta"><b>RPG Weapon and Armor 06/file (84).jpg</b>
+  <span class="ok">ok · 10×5 · рамок 50 · conf 0.924</span></div>
+</div><div class="card" data-status="ok">
+  <a href="preview/RPG%20Weapon%20and%20Armor%2006/file%20%2885%29.jpg"><img loading="lazy" src="preview/RPG%20Weapon%20and%20Armor%2006/file%20%2885%29.jpg"></a>
+  <div class="meta"><b>RPG Weapon and Armor 06/file (85).jpg</b>
+  <span class="ok">ok · 10×5 · рамок 50 · conf 0.845</span></div>
+</div><div class="card" data-status="ok">
+  <a href="preview/RPG%20Weapon%20and%20Armor%2007/file%20%2884%29.jpg"><img loading="lazy" src="preview/RPG%20Weapon%20and%20Armor%2007/file%20%2884%29.jpg"></a>
+  <div class="meta"><b>RPG Weapon and Armor 07/file (84).jpg</b>
+  <span class="ok">ok · 10×5 · рамок 50 · conf 0.885</span></div>
+</div><div class="card" data-status="ok">
+  <a href="preview/RPG%20Weapon%20and%20Armor%2007/file%20%2885%29.jpg"><img loading="lazy" src="preview/RPG%20Weapon%20and%20Armor%2007/file%20%2885%29.jpg"></a>
+  <div class="meta"><b>RPG Weapon and Armor 07/file (85).jpg</b>
+  <span class="ok">ok · 10×5 · рамок 50 · conf 0.893</span></div>
+</div><div class="card" data-status="ok">
+  <a href="preview/RPG%20Weapon%20and%20Armor%2008/file%20%2884%29.jpg"><img loading="lazy" src="preview/RPG%20Weapon%20and%20Armor%2008/file%20%2884%29.jpg"></a>
+  <div class="meta"><b>RPG Weapon and Armor 08/file (84).jpg</b>
+  <span class="ok">ok · 10×5 · рамок 50 · conf 0.859</span></div>
+</div><div class="card" data-status="ok">
+  <a href="preview/RPG%20Weapon%20and%20Armor%2008/file%20%2885%29.jpg"><img loading="lazy" src="preview/RPG%20Weapon%20and%20Armor%2008/file%20%2885%29.jpg"></a>
+  <div class="meta"><b>RPG Weapon and Armor 08/file (85).jpg</b>
+  <span class="ok">ok · 10×5 · рамок 50 · conf 0.91</span></div>
+</div><div class="card" data-status="ok">
+  <a href="preview/RPG%20Weapon%20and%20Armor%2009/file%20%2884%29.jpg"><img loading="lazy" src="preview/RPG%20Weapon%20and%20Armor%2009/file%20%2884%29.jpg"></a>
+  <div class="meta"><b>RPG Weapon and Armor 09/file (84).jpg</b>
+  <span class="ok">ok · 10×5 · рамок 50 · conf 0.9</span></div>
+</div><div class="card" data-status="ok">
+  <a href="preview/RPG%20Weapon%20and%20Armor%2009/file%20%2885%29.jpg"><img loading="lazy" src="preview/RPG%20Weapon%20and%20Armor%2009/file%20%2885%29.jpg"></a>
+  <div class="meta"><b>RPG Weapon and Armor 09/file (85).jpg</b>
+  <span class="ok">ok · 10×5 · рамок 50 · conf 0.904</span></div>
+</div><div class="card" data-status="ok">
+  <a href="preview/RPG%20Weapon%20and%20Armor%2010/file%20%2884%29.jpg"><img loading="lazy" src="preview/RPG%20Weapon%20and%20Armor%2010/file%20%2884%29.jpg"></a>
+  <div class="meta"><b>RPG Weapon and Armor 10/file (84).jpg</b>
+  <span class="ok">ok · 10×5 · рамок 50 · conf 0.891</span></div>
+</div><div class="card" data-status="ok">
+  <a href="preview/RPG%20Weapon%20and%20Armor%2010/file%20%2885%29.jpg"><img loading="lazy" src="preview/RPG%20Weapon%20and%20Armor%2010/file%20%2885%29.jpg"></a>
+  <div class="meta"><b>RPG Weapon and Armor 10/file (85).jpg</b>
+  <span class="ok">ok · 10×5 · рамок 50 · conf 0.877</span></div>
+</div><div class="card" data-status="ok">
+  <a href="preview/RPG%20Weapon%20and%20Armor%2011/file%20%2884%29.jpg"><img loading="lazy" src="preview/RPG%20Weapon%20and%20Armor%2011/file%20%2884%29.jpg"></a>
+  <div class="meta"><b>RPG Weapon and Armor 11/file (84).jpg</b>
+  <span class="ok">ok · 10×5 · рамок 50 · conf 0.822</span></div>
+</div><div class="card" data-status="ok">
+  <a href="preview/RPG%20Weapon%20and%20Armor%2011/file%20%2885%29.jpg"><img loading="lazy" src="preview/RPG%20Weapon%20and%20Armor%2011/file%20%2885%29.jpg"></a>
+  <div class="meta"><b>RPG Weapon and Armor 11/file (85).jpg</b>
+  <span class="ok">ok · 10×5 · рамок 50 · conf 0.88</span></div>
+</div><div class="card" data-status="ok">
+  <a href="preview/RPG%20Weapon%20and%20Armor%2012/file%20%2884%29.jpg"><img loading="lazy" src="preview/RPG%20Weapon%20and%20Armor%2012/file%20%2884%29.jpg"></a>
+  <div class="meta"><b>RPG Weapon and Armor 12/file (84).jpg</b>
+  <span class="ok">ok · 10×5 · рамок 50 · conf 0.876</span></div>
+</div><div class="card" data-status="ok">
+  <a href="preview/RPG%20Weapon%20and%20Armor%2012/file%20%2885%29.jpg"><img loading="lazy" src="preview/RPG%20Weapon%20and%20Armor%2012/file%20%2885%29.jpg"></a>
+  <div class="meta"><b>RPG Weapon and Armor 12/file (85).jpg</b>
+  <span class="ok">ok · 10×5 · рамок 50 · conf 0.825</span></div>
+</div><div class="card" data-status="ok">
+  <a href="preview/RPG%20Weapon%20and%20Armor%2013/file%20%2884%29.jpg"><img loading="lazy" src="preview/RPG%20Weapon%20and%20Armor%2013/file%20%2884%29.jpg"></a>
+  <div class="meta"><b>RPG Weapon and Armor 13/file (84).jpg</b>
+  <span class="ok">ok · 10×5 · рамок 50 · conf 0.8</span></div>
+</div><div class="card" data-status="ok">
+  <a href="preview/RPG%20Weapon%20and%20Armor%2013/file%20%2885%29.jpg"><img loading="lazy" src="preview/RPG%20Weapon%20and%20Armor%2013/file%20%2885%29.jpg"></a>
+  <div class="meta"><b>RPG Weapon and Armor 13/file (85).jpg</b>
+  <span class="ok">ok · 10×5 · рамок 50 · conf 0.848</span></div>
+</div><div class="card" data-status="ok">
+  <a href="preview/RPG%20Weapon%20and%20Armor%2014/file%20%2884%29.jpg"><img loading="lazy" src="preview/RPG%20Weapon%20and%20Armor%2014/file%20%2884%29.jpg"></a>
+  <div class="meta"><b>RPG Weapon and Armor 14/file (84).jpg</b>
+  <span class="ok">ok · 10×5 · рамок 50 · conf 0.919</span></div>
+</div><div class="card" data-status="ok">
+  <a href="preview/RPG%20Weapon%20and%20Armor%2014/file%20%2885%29.jpg"><img loading="lazy" src="preview/RPG%20Weapon%20and%20Armor%2014/file%20%2885%29.jpg"></a>
+  <div class="meta"><b>RPG Weapon and Armor 14/file (85).jpg</b>
+  <span class="ok">ok · 10×5 · рамок 50 · conf 0.799</span></div>
+</div><div class="card" data-status="no_frames">
+  <a href="preview/RPG%20Weapon%20and%20Armor%2015/file%20%2884%29.jpg"><img loading="lazy" src="preview/RPG%20Weapon%20and%20Armor%2015/file%20%2884%29.jpg"></a>
+  <div class="meta"><b>RPG Weapon and Armor 15/file (84).jpg</b>
+  <span class="nofr">no_frames · 10×5 · рамок 0 · conf 0.0</span></div>
+</div><div class="card" data-status="no_frames">
+  <a href="preview/RPG%20Weapon%20and%20Armor%2015/file%20%2885%29.jpg"><img loading="lazy" src="preview/RPG%20Weapon%20and%20Armor%2015/file%20%2885%29.jpg"></a>
+  <div class="meta"><b>RPG Weapon and Armor 15/file (85).jpg</b>
+  <span class="nofr">no_frames · 10×5 · рамок 0 · conf 0.0</span></div>
+</div><div class="card" data-status="ok">
+  <a href="preview/Sea%20Loot%20Icons/file%20%2884%29.jpg"><img loading="lazy" src="preview/Sea%20Loot%20Icons/file%20%2884%29.jpg"></a>
+  <div class="meta"><b>Sea Loot Icons/file (84).jpg</b>
+  <span class="ok">ok · 10×5 · рамок 50 · conf 0.952</span></div>
+</div><div class="card" data-status="ok">
+  <a href="preview/Sea%20Loot%20Icons/file%20%2885%29.jpg"><img loading="lazy" src="preview/Sea%20Loot%20Icons/file%20%2885%29.jpg"></a>
+  <div class="meta"><b>Sea Loot Icons/file (85).jpg</b>
+  <span class="ok">ok · 10×5 · рамок 50 · conf 0.941</span></div>
+</div><div class="card" data-status="ok">
+  <a href="preview/Stone%20Runes%20Icons/file%20%2884%29.jpg"><img loading="lazy" src="preview/Stone%20Runes%20Icons/file%20%2884%29.jpg"></a>
+  <div class="meta"><b>Stone Runes Icons/file (84).jpg</b>
+  <span class="ok">ok · 10×5 · рамок 50 · conf 0.956</span></div>
+</div><div class="card" data-status="ok">
+  <a href="preview/Stone%20Runes%20Icons/file%20%2885%29.jpg"><img loading="lazy" src="preview/Stone%20Runes%20Icons/file%20%2885%29.jpg"></a>
+  <div class="meta"><b>Stone Runes Icons/file (85).jpg</b>
+  <span class="ok">ok · 10×5 · рамок 50 · conf 0.946</span></div>
+</div><div class="card" data-status="ok">
+  <a href="preview/Village%20Craft%20Icons/file%20%2884%29.jpg"><img loading="lazy" src="preview/Village%20Craft%20Icons/file%20%2884%29.jpg"></a>
+  <div class="meta"><b>Village Craft Icons/file (84).jpg</b>
+  <span class="ok">ok · 10×5 · рамок 50 · conf 0.892</span></div>
+</div><div class="card" data-status="ok">
+  <a href="preview/Village%20Craft%20Icons/file%20%2885%29.jpg"><img loading="lazy" src="preview/Village%20Craft%20Icons/file%20%2885%29.jpg"></a>
+  <div class="meta"><b>Village Craft Icons/file (85).jpg</b>
+  <span class="ok">ok · 10×5 · рамок 50 · conf 0.933</span></div>
+</div></div>
+<script>
+const links=[...document.querySelectorAll('.filters a')];
+links.forEach(a=>a.onclick=e=>{e.preventDefault();
+ links.forEach(x=>x.classList.remove('active'));a.classList.add('active');
+ const f=a.dataset.f;
+ document.querySelectorAll('.card').forEach(c=>{
+   c.style.display=(f==='all'||c.dataset.status===f)?'':'none';});});
+</script></body></html>
