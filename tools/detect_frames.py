@@ -128,6 +128,46 @@ def _plateau_line(band: np.ndarray) -> tuple[float, float]:
     return (lo + hi) / 2.0, float(score[k])
 
 
+def _line_candidates(gray: np.ndarray, lo: int, hi: int,
+                     along: tuple[int, int], axis: int,
+                     min_score: float = 0.25) -> list[tuple[float, float]]:
+    """Все кандидаты-линии в окне [lo, hi): список (позиция, score), по x."""
+    a, b = along
+    if axis == 0:
+        band = gray[a:b, lo:hi].astype(np.float32)
+    else:
+        band = gray[lo:hi, a:b].T.astype(np.float32)
+    if band.shape[1] < 3 or band.shape[0] < 8:
+        return []
+    w = band.shape[1]
+    P = np.pad(band, ((0, 0), (2, 2)), mode="edge")
+    nb = np.maximum((P[:, 0:w] + P[:, 1:w + 1]) / 2.0,
+                    (P[:, 3:w + 3] + P[:, 4:w + 4]) / 2.0)
+    ok = (band - nb > 6) & (band > 30) & (band < 225)
+    frac = ok.mean(axis=0)
+    score = np.zeros(w, np.float32)
+    for c in range(w):
+        v = band[ok[:, c], c]
+        if v.size >= 5:
+            score[c] = frac[c] * max(0.0, 1.0 - float(v.std()) / 45.0)
+    # плато: собираем связные участки score >= 0.55*max, берём центр каждого
+    if score.max() < min_score:
+        return []
+    thr = max(min_score, 0.55 * float(score.max()))
+    out, c = [], 0
+    while c < w:
+        if score[c] < thr:
+            c += 1
+            continue
+        e = c
+        while e + 1 < w and score[e + 1] >= thr:
+            e += 1
+        k = c + int(np.argmax(score[c:e + 1]))
+        out.append((lo + (c + e) / 2.0, float(score[k])))
+        c = e + 1
+    return out
+
+
 def _refine(gray: np.ndarray, lo: int, hi: int, along: tuple[int, int],
             axis: int) -> tuple[float, float]:
     """Уточняет одну границу. axis=0 -> вертикальная линия (ищем по x)."""
@@ -211,20 +251,85 @@ def detect_sheet(path: str, verbose: bool = False) -> Sheet:
     ny = nominals(iny, uy, dy, H)
 
     # ---------------------------------------------------------------- 3. уточнение
+    # Между двумя слотами всегда ДВЕ линии: правая граница левого слота и левая
+    # граница правого. Ищем их вместе внутри жёлоба (+-12 px) и берём первую и
+    # последнюю найденную. Так линии не теряются, даже если они тусклее жёлоба
+    # (обычный случай: линия ярче 30, но темнее порога "не жёлоб").
+    MARGIN = 12
+
+    def outer_line(nominal: int, along: tuple[int, int], axis: int, total: int):
+        """Внешняя граница листа — линии с одной стороны, окно пошире."""
+        for win in (10, 20):
+            lo = max(1, nominal - win)
+            hi = min(total - 1, nominal + win + 1)
+            cands = _line_candidates(gray, lo, hi, along, axis)
+            if cands:
+                # берём ближайшего к номиналу
+                best = min(cands, key=lambda c: abs(c[0] - nominal))
+                return best
+        return float(nominal), 0.0
+
+    def gutter_lines(band: tuple[int, int], along: tuple[int, int], axis: int,
+                     total: int):
+        """Две линии жёлоба: правая грань левого слота и левая грань правого.
+
+        Жёлоб делим пополам: слева от середины ищем правую границу (ближайшую
+        к середине), справа — левую. Это не даёт линии «уехать» на контур
+        иконки, если он попал в окно поиска.
+        """
+        a, b = band
+        lo, hi = max(1, a - MARGIN), min(total - 1, b + MARGIN + 1)
+        cands = _line_candidates(gray, lo, hi, along, axis)
+        if not cands:
+            return (float(a), 0.0), (float(b), 0.0)
+        mid = (a + b) / 2.0
+        left = [c for c in cands if c[0] <= mid]
+        right = [c for c in cands if c[0] >= mid]
+        l = max(left, key=lambda c: c[0]) if left else (float(a), 0.0)
+        r = min(right, key=lambda c: c[0]) if right else (float(b), 0.0)
+        return l, r
+
+    # диапазон вдоль стороны (чтобы не ловить углы и арт по краям)
+    yin = (ny[0][0] + int(INSET * (ny[-1][1] - ny[0][0])),
+           ny[-1][1] - int(INSET * (ny[-1][1] - ny[0][0])))
+    xin = (nx[0][0] + int(INSET * (nx[-1][1] - nx[0][0])),
+           nx[-1][1] - int(INSET * (nx[-1][1] - nx[0][0])))
+
+    xs = [[0.0, 0.0] for _ in range(cols)]
+    xs_conf = [[0.0, 0.0] for _ in range(cols)]
+    # внешние границы
+    left_edge = outer_line(max(2, nx[0][0]), (max(0, yin[0]), min(H, yin[1])), 0, W)
+    right_edge = outer_line(min(W - 2, nx[-1][1]), (max(0, yin[0]), min(H, yin[1])), 0, W)
+    xs[0][0], xs_conf[0][0] = left_edge
+    xs[-1][1], xs_conf[-1][1] = right_edge
+    for k, band in enumerate(inx):
+        l, r = gutter_lines(band, (max(0, yin[0]), min(H, yin[1])), 0, W)
+        xs[k][1], xs_conf[k][1] = l        # правая граница левого слота
+        xs[k + 1][0], xs_conf[k + 1][0] = r  # левая граница правого слота
+
+    ys = [[0.0, 0.0] for _ in range(rows)]
+    ys_conf = [[0.0, 0.0] for _ in range(rows)]
+    top_edge = outer_line(max(2, ny[0][0]), (max(0, xin[0]), min(W, xin[1])), 1, H)
+    bot_edge = outer_line(min(H - 2, ny[-1][1]), (max(0, xin[0]), min(W, xin[1])), 1, H)
+    ys[0][0], ys_conf[0][0] = top_edge
+    ys[-1][1], ys_conf[-1][1] = bot_edge
+    for k, band in enumerate(iny):
+        t, b = gutter_lines(band, (max(0, xin[0]), min(W, xin[1])), 1, H)
+        ys[k][1], ys_conf[k][1] = t
+        ys[k + 1][0], ys_conf[k + 1][0] = b
+
     boxes, confs = [], []
-    for j, (gy0, gy1) in enumerate(ny):
-        for i, (gx0, gx1) in enumerate(nx):
-            ia = int(INSET * (gy1 - gy0)) + 2
-            ib = int(INSET * (gx1 - gx0)) + 2
-            x0, c0 = _refine2(gray, gx0, (gy0 + ia, gy1 - ia), 0)
-            x1, c1 = _refine2(gray, gx1, (gy0 + ia, gy1 - ia), 0)
-            y0, c2 = _refine2(gray, gy0, (gx0 + ib, gx1 - ib), 1)
-            y1, c3 = _refine2(gray, gy1, (gx0 + ib, gx1 - ib), 1)
+    for j in range(rows):
+        for i in range(cols):
+            x0, x1 = xs[i]
+            y0, y1 = ys[j]
             boxes.append([x0, y0, x1, y1])
-            confs.extend([c0, c1, c2, c3])
-            if verbose and (c0 + c1 + c2 + c3) / 4 < 0.5:
-                print(f"    слабая ячейка {i},{j}: conf {(c0+c1+c2+c3)/4:.2f} "
-                      f"nominal ({gx0},{gy0})-({gx1},{gy1})")
+            c = float(np.mean([xs_conf[i][0], xs_conf[i][1],
+                               ys_conf[j][0], ys_conf[j][1]]))
+            confs.extend([c] * 4)
+            if verbose and c < 0.5:
+                print(f"    слабая ячейка {i},{j}: conf {c:.2f} "
+                      f"({x0:.0f},{y0:.0f})-({x1:.0f},{y1:.0f})")
 
     # ---------------------------------------------------------------- 4. контроль
     boxes = np.asarray(boxes, float)
@@ -252,30 +357,25 @@ def detect_sheet(path: str, verbose: bool = False) -> Sheet:
                 b[1] = boxes[k - cols][3] + 1
 
     # --- выравнивание по сетке
-    # Сетка на всех листах строго регулярная, поэтому все левые/правые границы
-    # столбца обязаны совпадать: выброс (линия перекрыта иконкой, блик и т.п.)
-    # возвращаем к медиане столбца/строки.
+    # Сетка строго регулярная: все слоты листа одного размера. Поэтому после
+    # уточнения приводим ширину/высоту всех боксов к медиане листа (проверено:
+    # качество попадания в линию от этого только растёт), а затем раздвигаем
+    # границы, если соседние слоты начали пересекаться.
     if boxes.size:
         b3 = boxes.reshape(rows, cols, 4)
-        fixed = 0
-        for i in range(cols):
-            for e in (0, 2):
-                v = b3[:, i, e]
-                m = float(np.median(v))
-                d = np.abs(v - m)
-                fixed += int((d > 2.5).sum())
-                v[d > 2.5] = m
-                b3[:, i, e] = v
+        w_med = float(np.median(b3[:, :, 2] - b3[:, :, 0]))
+        h_med = float(np.median(b3[:, :, 3] - b3[:, :, 1]))
+        sh.corrected = int(np.sum(np.abs(b3[:, :, 2] - b3[:, :, 0] - w_med) > 0.5)
+                           + np.sum(np.abs(b3[:, :, 3] - b3[:, :, 1] - h_med) > 0.5))
+        b3[:, :, 2] = b3[:, :, 0] + w_med
+        b3[:, :, 3] = b3[:, :, 1] + h_med
         for j in range(rows):
-            for e in (1, 3):
-                v = b3[j, :, e]
-                m = float(np.median(v))
-                d = np.abs(v - m)
-                fixed += int((d > 2.5).sum())
-                v[d > 2.5] = m
-                b3[j, :, e] = v
+            for i in range(cols):
+                if i and b3[j, i, 0] <= b3[j, i - 1, 2]:
+                    b3[j, i, 0] = b3[j, i - 1, 2] + 1
+                if j and b3[j, i, 1] <= b3[j - 1, i, 3]:
+                    b3[j, i, 1] = b3[j - 1, i, 3] + 1
         boxes = b3.reshape(-1, 4)
-        sh.corrected = fixed
 
     sh.cell_w = float(np.median(boxes[:, 2] - boxes[:, 0]))
     sh.cell_h = float(np.median(boxes[:, 3] - boxes[:, 1]))
