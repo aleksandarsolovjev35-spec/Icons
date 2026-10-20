@@ -58,6 +58,17 @@ python3 tools/detect_frames.py "RPG Loot Icons 01/RPG Loot Icons 01 Part 1.jpg"
   не подтвердилось 5.6 % сторон (линия перекрыта артом — там размер выровнен
   по сетке листа).
 
+## Нарезка иконок с обводкой
+
+```bash
+python3 tools/cut_icons.py                     # по 2 иконки с двух листов
+python3 tools/cut_icons.py "RPG Loot Icons 01/RPG Loot Icons 01 Part 1.jpg" --slots 0 11 23
+python3 tools/cut_icons.py --n 6 --scale 3     # 6 штук с листа, апскейл x3
+```
+
+Режет по внешнему краю красной обводки (bbox + 2 px запаса), поэтому линия
+остаётся целиком, ничего не срезается. Результат — PNG в `cutouts/`.
+
 ## Проверка размера
 
 ```bash
@@ -78,6 +89,7 @@ python3 tools/check_sizes.py            # лимит 160 px
 | `annotated/sheets/sheet_*.jpg` | контактные листы по 8 листов |
 | `annotated/index.html` | галерея с фильтром по статусу |
 | `tools/check_sizes.py` | контроль лимита 160 px + картинка с крупнейшими рамками |
+| `tools/cut_icons.py` | вырезает отдельные иконки вместе с красной обводкой (`cutouts/`) |
 | `annotated/frames.csv` / `.json` | по строке на лист: сетка, cell, confidence, все bbox |
 | `annotated/size_check.csv` / `.jpg` | размеры всех 11 300 рамок / 9 самых крупных |
 | `annotated/REPORT.md` | сводка по прогону |
