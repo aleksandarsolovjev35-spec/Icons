@@ -63,11 +63,13 @@ python3 tools/detect_frames.py "RPG Loot Icons 01/RPG Loot Icons 01 Part 1.jpg"
 ```bash
 python3 tools/cut_icons.py                     # по 2 иконки с двух листов
 python3 tools/cut_icons.py "RPG Loot Icons 01/RPG Loot Icons 01 Part 1.jpg" --slots 0 11 23
-python3 tools/cut_icons.py --n 6 --scale 3     # 6 штук с листа, апскейл x3
+python3 tools/cut_icons.py --n 6               # 6 штук с листа
+python3 tools/cut_icons.py --scale 3           # при желании — апскейл x3
 ```
 
 Режет по внешнему краю красной обводки (bbox + 2 px запаса), поэтому линия
-остаётся целиком, ничего не срезается. Результат — PNG в `cutouts/`.
+остаётся целиком, ничего не срезается. По умолчанию — пиксель в пиксель, без
+масштабирования. Результат — PNG в `cutouts/`.
 
 ## Проверка размера
 

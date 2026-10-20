@@ -5,7 +5,8 @@ cut_icons.py — вырезает отдельные иконки с рамко�
 Режет ровно по внешнему краю красной обводки: bbox + толщина линии + 1 px,
 поэтому в вырезе остаётся вся красная рамка, без обрезки.
 
-    python3 tools/cut_icons.py                      # 2 случайные иконки с 2 листов
+    python3 tools/cut_icons.py                      # по 2 иконки с 2 листов, 1:1
+    python3 tools/cut_icons.py --scale 3            # то же с апскейлом x3
     python3 tools/cut_icons.py --n 6                # по 6 с каждого указанного листа
     python3 tools/cut_icons.py "RPG Loot Icons 01/RPG Loot Icons 01 Part 1.jpg" --slots 0 11
 """
@@ -25,7 +26,7 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 PAD = 2          # запас вокруг красной линии (сама линия 2 px)
 
 
-def cut(path: str, slots: list[int], outdir: str, scale: float = 2.0) -> list[str]:
+def cut(path: str, slots: list[int], outdir: str, scale: float = 1.0) -> list[str]:
     sh = D.detect_sheet(path)
     img = cv2.imread(path)
     H, W = img.shape[:2]
@@ -43,8 +44,8 @@ def cut(path: str, slots: list[int], outdir: str, scale: float = 2.0) -> list[st
         cx1 = min(W, x1 + 1 + PAD)
         cy1 = min(H, y1 + 1 + PAD)
         crop = img[cy0:cy1, cx0:cx1]
-        big = cv2.resize(crop, None, fx=scale, fy=scale,
-                         interpolation=cv2.INTER_LANCZOS4)
+        big = crop if scale == 1.0 else cv2.resize(
+            crop, None, fx=scale, fy=scale, interpolation=cv2.INTER_LANCZOS4)
         out = os.path.join(outdir, f"{stem}__slot{k:02d}.png")
         cv2.imwrite(out, big)
         made.append(out)
@@ -57,7 +58,8 @@ def main() -> int:
     ap.add_argument("images", nargs="*")
     ap.add_argument("--slots", type=int, nargs="*", default=None)
     ap.add_argument("--n", type=int, default=2, help="сколько иконок с листа")
-    ap.add_argument("--scale", type=float, default=2.0)
+    ap.add_argument("--scale", type=float, default=1.0,
+                    help="1.0 = пиксель в пиксель (по умолчанию)")
     ap.add_argument("--out", default="cutouts")
     args = ap.parse_args()
 
