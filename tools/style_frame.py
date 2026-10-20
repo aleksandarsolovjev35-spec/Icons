@@ -43,9 +43,10 @@ VARIANTS = {
     # «утопленный» слот: бортик узкий, градиент мягкий
     "inset": dict(rim=4.0, inset=1.0, radius=8.0, bevel=0.55, shadow=1.3,
                   deep=20.0, gloss=0.14, drop=0.25, lip=0.24, tone=0.85),
-    # то же, но с прямыми углами
+    # прямые углы + свет снизу: верх приглушён, глубина читается снизу
     "sharp": dict(rim=5.5, inset=1.5, radius=0.0, bevel=0.85, shadow=1.0,
-                  deep=14.0, gloss=0.22, drop=0.55, lip=0.38, tone=1.05),
+                  deep=14.0, gloss=0.22, drop=0.55, lip=0.30, tone=1.05,
+                  light="bottom"),
 }
 
 # параметры, которые можно переопределить из командной строки
@@ -68,12 +69,17 @@ LIP = np.array([0x8e, 0x93, 0x9c], np.float32)        # тонкая свето�
 GLOSS = np.array([0xa8, 0xad, 0xb6], np.float32)
 
 
-def _sdf(X, Y, cx, cy, hw, hh, r):
-    """Signed distance до скруглённого прямоугольника (<0 внутри)."""
+def _sdf(X, Y, cx, cy, hw, hh, r, sharp_outside: bool = False):
+    """Signed distance до скруглённого прямоугольника (<0 внутри).
+
+    sharp_outside=True считает внешнюю часть по L∞ (шахматной) метрике — тогда
+    смещение борта наружу не скругляет внешние углы, углы остаются прямыми.
+    """
     qx = np.abs(X - cx) - (hw - r)
     qy = np.abs(Y - cy) - (hh - r)
     ax, ay = np.maximum(qx, 0.0), np.maximum(qy, 0.0)
-    return np.sqrt(ax * ax + ay * ay) + np.minimum(np.maximum(qx, qy), 0.0) - r
+    outside = np.maximum(ax, ay) if sharp_outside else np.sqrt(ax * ax + ay * ay)
+    return outside + np.minimum(np.maximum(qx, qy), 0.0) - r
 
 
 def _cov(sd, px=1.0):
@@ -93,12 +99,18 @@ def style_box(img: np.ndarray, box, p: dict, rim_rgb=RIM_DARK) -> None:
     cx, cy = (x0 + x1) / 2.0, (y0 + y1) / 2.0
     hw, hh = (x1 - x0 + 1) / 2.0, (y1 - y0 + 1) / 2.0
     r = min(p["radius"], hw * 0.6, hh * 0.6)
-    sd = _sdf(X, Y, cx, cy, hw, hh, r)
+    sd = _sdf(X, Y, cx, cy, hw, hh, r,
+              sharp_outside=p.get("sharp_outside", r <= 0.05))
 
-    # направление света: сверху-слева -> +1 на верхней/левой кромке
     nx = (X - cx) / hw
     ny = (Y - cy) / hh
-    lit = np.clip(-(nx * 0.6 + ny * 0.8), -1.0, 1.0)     # 1 = верх-лево
+    if p.get("light", "top") == "bottom":
+        # свет снизу-справа: блик по нижней кромке, верх остаётся тёмным
+        lit = np.clip(nx * 0.5 + ny * 0.9, -1.0, 1.0)
+        shade_dir = np.clip(-ny, 0.0, 1.0)          # внутренняя тень сверху
+    else:
+        lit = np.clip(-(nx * 0.6 + ny * 0.8), -1.0, 1.0)   # 1 = верх-лево
+        shade_dir = np.clip(-lit, 0.0, 1.0)
 
     # --- 1. внешняя падающая тень (под бортом, снизу-справа)
     drop_band = np.clip(_cov(sd - p["rim"] - 1.0, 6.0) -
@@ -115,7 +127,10 @@ def style_box(img: np.ndarray, box, p: dict, rim_rgb=RIM_DARK) -> None:
     light_col = tone * 0.35 + RIM_LIGHT * 0.65
     # на свету (верх-лево) внешняя кромка светлее, на теневой стороне темнее
     side = np.clip((lit + 1.0) / 2.0, 0.0, 1.0)
-    mix = (1.0 - t) * (p["bevel"] * (0.35 + 0.65 * side))[..., None]
+    if p.get("light", "top") == "bottom":
+        # свет снизу: верхняя кромка почти не подсвечивается (углубляем верх)
+        side = side ** 2.5
+    mix = (1.0 - t) * (p["bevel"] * (0.10 + 0.90 * side))[..., None]
     rim_col = tone * (1.0 - mix) + light_col * mix
 
     # тонкая световая линия по внешней кромке (только на свету) — «отражение»
@@ -127,7 +142,7 @@ def style_box(img: np.ndarray, box, p: dict, rim_rgb=RIM_DARK) -> None:
     d0, d1 = p["inset"], p["inset"] + p["deep"]
     ish = np.clip(_cov(sd + d0, 1.0) - _cov(sd + d1, d1 - d0), 0, 1)
     ish = cv2.GaussianBlur(ish, (0, 0), max(2.0, p["deep"] * 0.35))
-    ish = ish * (0.35 + 0.65 * np.clip(-lit, 0.0, 1.0)) * p["shadow"]
+    ish = ish * (0.35 + 0.65 * shade_dir) * p["shadow"]
     gl = np.clip(_cov(sd + p["inset"] + 0.4, 1.0) -
                  _cov(sd + p["inset"] + 1.8, 1.0), 0.0, 1.0)
     gl = gl * np.clip(lit, 0.0, 1.0) * p["gloss"]
