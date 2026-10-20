@@ -43,23 +43,28 @@ VARIANTS = {
     # «утопленный» слот: бортик узкий, градиент мягкий
     "inset": dict(rim=4.0, inset=1.0, radius=8.0, bevel=0.55, shadow=1.3,
                   deep=20.0, gloss=0.14, drop=0.25, lip=0.24, tone=0.85),
-    # прямые углы + свет снизу: верх приглушён, глубина читается снизу
+    # то же, что deep, но с прямыми углами (свет сверху-слева, как в deep)
     "sharp": dict(rim=5.5, inset=1.5, radius=0.0, bevel=0.85, shadow=1.0,
-                  deep=14.0, gloss=0.22, drop=0.55, lip=0.30, tone=1.05,
-                  light="bottom"),
+                  deep=14.0, gloss=0.22, drop=0.55, lip=0.38, tone=1.05,
+                  light="top"),
+    # прямые углы + свет снизу (тёмный верх, глубина читается снизу)
+    "sharp_bottom": dict(rim=5.5, inset=1.5, radius=0.0, bevel=0.85, shadow=1.0,
+                         deep=14.0, gloss=0.22, drop=0.55, lip=0.30, tone=1.05,
+                         light="bottom"),
 }
 
 # параметры, которые можно переопределить из командной строки
 OVERRIDES = ("rim", "inset", "radius", "bevel", "shadow", "deep", "gloss",
-             "drop", "lip", "tone")
+             "drop", "lip", "tone", "light")
 
 
 def params(variant: str = "deep", **kw) -> dict:
     """Параметры варианта + переопределения (например radius=0)."""
     p = dict(VARIANTS[variant])
     for k, v in kw.items():
-        if v is not None and k in OVERRIDES:
-            p[k] = float(v)
+        if v is None or k not in OVERRIDES:
+            continue
+        p[k] = v if k == "light" else float(v)
     if p["radius"] <= 0.05:       # прямые углы: без скругления
         p["radius"] = 0.0
     return p
@@ -183,6 +188,8 @@ def main(argv=None) -> int:
     ap.add_argument("--scale", type=float, default=1.0)
     ap.add_argument("--radius", type=float, default=None,
                     help="радиус скругления, 0 = прямые углы")
+    ap.add_argument("--light", default=None, choices=["top", "bottom"],
+                    help="источник света: top (по умолчанию) или bottom")
     args = ap.parse_args(argv)
 
     files = args.images or D.all_sheets()
@@ -194,7 +201,7 @@ def main(argv=None) -> int:
         out_rel = os.path.join(args.out, os.path.splitext(rel)[0] + ".jpg")
         out = out_rel if os.path.isabs(args.out) else os.path.join(ROOT, out_rel)
         k = style_sheet(f, out, variant=args.variant, quality=args.quality,
-                        scale=args.scale, radius=args.radius)
+                        scale=args.scale, radius=args.radius, light=args.light)
         print(f"[{n}/{len(files)}] {rel}  рамок {k}  -> {out_rel}")
     return 0
 
