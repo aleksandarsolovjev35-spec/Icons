@@ -43,7 +43,25 @@ VARIANTS = {
     # «утопленный» слот: бортик узкий, градиент мягкий
     "inset": dict(rim=4.0, inset=1.0, radius=8.0, bevel=0.55, shadow=1.3,
                   deep=20.0, gloss=0.14, drop=0.25, lip=0.24, tone=0.85),
+    # то же, но с прямыми углами
+    "sharp": dict(rim=5.5, inset=1.5, radius=0.0, bevel=0.85, shadow=1.0,
+                  deep=14.0, gloss=0.22, drop=0.55, lip=0.38, tone=1.05),
 }
+
+# параметры, которые можно переопределить из командной строки
+OVERRIDES = ("rim", "inset", "radius", "bevel", "shadow", "deep", "gloss",
+             "drop", "lip", "tone")
+
+
+def params(variant: str = "deep", **kw) -> dict:
+    """Параметры варианта + переопределения (например radius=0)."""
+    p = dict(VARIANTS[variant])
+    for k, v in kw.items():
+        if v is not None and k in OVERRIDES:
+            p[k] = float(v)
+    if p["radius"] <= 0.05:       # прямые углы: без скругления
+        p["radius"] = 0.0
+    return p
 RIM_DARK = np.array([0x1b, 0x1c, 0x20], np.float32)   # внутренняя кромка борта
 RIM_LIGHT = np.array([0x55, 0x59, 0x61], np.float32)  # внешняя кромка на свету
 LIP = np.array([0x8e, 0x93, 0x9c], np.float32)        # тонкая световая линия
@@ -127,8 +145,8 @@ def style_box(img: np.ndarray, box, p: dict, rim_rgb=RIM_DARK) -> None:
 
 
 def style_sheet(path: str, out: str, variant: str = "deep",
-                quality: int = 92, scale: float = 1.0) -> int:
-    p = VARIANTS[variant]
+                quality: int = 92, scale: float = 1.0, **kw) -> int:
+    p = params(variant, **kw)
     sh = D.detect_sheet(path)
     img = cv2.imread(path)
     for box in sh.boxes:
@@ -148,6 +166,8 @@ def main(argv=None) -> int:
     ap.add_argument("--limit", type=int, default=0)
     ap.add_argument("--quality", type=int, default=92)
     ap.add_argument("--scale", type=float, default=1.0)
+    ap.add_argument("--radius", type=float, default=None,
+                    help="радиус скругления, 0 = прямые углы")
     args = ap.parse_args(argv)
 
     files = args.images or D.all_sheets()
@@ -159,7 +179,7 @@ def main(argv=None) -> int:
         out_rel = os.path.join(args.out, os.path.splitext(rel)[0] + ".jpg")
         out = out_rel if os.path.isabs(args.out) else os.path.join(ROOT, out_rel)
         k = style_sheet(f, out, variant=args.variant, quality=args.quality,
-                        scale=args.scale)
+                        scale=args.scale, radius=args.radius)
         print(f"[{n}/{len(files)}] {rel}  рамок {k}  -> {out_rel}")
     return 0
 

@@ -64,7 +64,8 @@ python3 tools/detect_frames.py "RPG Loot Icons 01/RPG Loot Icons 01 Part 1.jpg"
 python3 tools/style_frame.py                       # все листы -> styled/ (0.45x)
 python3 tools/style_frame.py --limit 3 --scale 1   # полное разрешение
 python3 tools/style_frame.py --variant soft|deep|inset
-python3 tools/cut_icons.py --style deep --out cutouts_styled   # вырезы с бортиком
+python3 tools/style_frame.py --radius 0                          # прямые углы, без скругления
+python3 tools/cut_icons.py --style sharp --radius 0 --n 1 --out cutouts_styled
 ```
 
 Как устроен бортик (`style_box`): считаем signed distance до скруглённого
@@ -78,7 +79,9 @@ python3 tools/cut_icons.py --style deep --out cutouts_styled   # вырезы с
 
 Всё через сглаженные маски → антиалиасинг на любом масштабе, и рамка
 масштабируется без потери качества. Варианты: `soft` (тонкий), `deep`
-(выраженный выступ, по умолчанию), `inset` (утопленный слот).
+(выраженный выступ, по умолчанию), `inset` (утопленный слот), `sharp`
+(без скругления). Радиус скругления можно задать вручную: `--radius 0` —
+прямые углы.
 
 ## Нарезка иконок с обводкой
 

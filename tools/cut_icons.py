@@ -28,12 +28,13 @@ PAD = 2          # запас вокруг красной линии (сама �
 
 
 def cut(path: str, slots: list[int], outdir: str, scale: float = 1.0,
-        style: str | None = None) -> list[str]:
+        style: str | None = None, radius: float | None = None) -> list[str]:
     sh = D.detect_sheet(path)
     img = cv2.imread(path)
     H, W = img.shape[:2]
+    p = None
     if style:                       # объёмный бортик вместо красной линии
-        p = S.VARIANTS[style]
+        p = S.params(style, radius=radius)
         for box in sh.boxes:
             S.style_box(img, box, p)
     else:
@@ -46,7 +47,7 @@ def cut(path: str, slots: list[int], outdir: str, scale: float = 1.0,
         if k >= len(sh.boxes):
             continue
         x0, y0, x1, y1 = sh.boxes[k]
-        pad = int(PAD + (S.VARIANTS[style]["rim"] if style else 0))
+        pad = int(PAD + (p["rim"] if style else 0))
         cx0 = max(0, x0 - pad)
         cy0 = max(0, y0 - pad)
         cx1 = min(W, x1 + 1 + pad)
@@ -71,6 +72,8 @@ def main() -> int:
     ap.add_argument("--out", default="cutouts")
     ap.add_argument("--style", default=None, choices=sorted(S.VARIANTS),
                     help="рисовать объёмный бортик вместо красной линии")
+    ap.add_argument("--radius", type=float, default=None,
+                    help="радиус скругления бортика, 0 = прямые углы")
     args = ap.parse_args()
 
     files = args.images or [
@@ -84,7 +87,8 @@ def main() -> int:
         print(os.path.relpath(f, ROOT))
         sh = D.detect_sheet(f)
         slots = args.slots if args.slots is not None else list(range(args.n))
-        cut(f, slots, outdir, scale=args.scale, style=args.style)
+        cut(f, slots, outdir, scale=args.scale, style=args.style,
+            radius=args.radius)
     return 0
 
 
