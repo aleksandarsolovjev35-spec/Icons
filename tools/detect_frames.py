@@ -433,6 +433,22 @@ def draw(sh: Sheet, src: str, dst: str, quality: int = 88, scale: float = 1.0) -
 
 
 # ------------------------------------------------------------------------ main
+SKIP_DIRS = {"annotated", "styled", "cutouts", "tools", ".git"}
+
+
+def all_sheets(root: str | None = None) -> list[str]:
+    """Все листы коллекции (папки с результатами пропускаем)."""
+    root = root or os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    out = []
+    for d in sorted(os.listdir(root)):
+        if d in SKIP_DIRS or d.startswith("styled_"):
+            continue
+        p = os.path.join(root, d)
+        if os.path.isdir(p):
+            out.extend(sorted(glob.glob(os.path.join(p, "*.jpg"))))
+    return out
+
+
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description="Детектор серых рамок на листах иконок")
     ap.add_argument("images", nargs="*")
@@ -448,7 +464,7 @@ def main(argv=None) -> int:
     args = ap.parse_args(argv)
 
     root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    files = args.images or sorted(glob.glob(os.path.join(root, "*", "*.jpg")))
+    files = args.images or all_sheets(root)
     if args.limit:
         files = files[: args.limit]
 

@@ -21,17 +21,24 @@ import cv2
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import detect_frames as D  # noqa: E402
+import style_frame as S  # noqa: E402
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 PAD = 2          # запас вокруг красной линии (сама линия 2 px)
 
 
-def cut(path: str, slots: list[int], outdir: str, scale: float = 1.0) -> list[str]:
+def cut(path: str, slots: list[int], outdir: str, scale: float = 1.0,
+        style: str | None = None) -> list[str]:
     sh = D.detect_sheet(path)
     img = cv2.imread(path)
     H, W = img.shape[:2]
-    for (x0, y0, x1, y1) in sh.boxes:
-        cv2.rectangle(img, (x0, y0), (x1, y1), D.RED, 2, cv2.LINE_AA)
+    if style:                       # объёмный бортик вместо красной линии
+        p = S.VARIANTS[style]
+        for box in sh.boxes:
+            S.style_box(img, box, p)
+    else:
+        for (x0, y0, x1, y1) in sh.boxes:
+            cv2.rectangle(img, (x0, y0), (x1, y1), D.RED, 2, cv2.LINE_AA)
 
     made = []
     stem = os.path.splitext(os.path.basename(path))[0].replace(" ", "_")
@@ -39,10 +46,11 @@ def cut(path: str, slots: list[int], outdir: str, scale: float = 1.0) -> list[st
         if k >= len(sh.boxes):
             continue
         x0, y0, x1, y1 = sh.boxes[k]
-        cx0 = max(0, x0 - PAD)
-        cy0 = max(0, y0 - PAD)
-        cx1 = min(W, x1 + 1 + PAD)
-        cy1 = min(H, y1 + 1 + PAD)
+        pad = int(PAD + (S.VARIANTS[style]["rim"] if style else 0))
+        cx0 = max(0, x0 - pad)
+        cy0 = max(0, y0 - pad)
+        cx1 = min(W, x1 + 1 + pad)
+        cy1 = min(H, y1 + 1 + pad)
         crop = img[cy0:cy1, cx0:cx1]
         big = crop if scale == 1.0 else cv2.resize(
             crop, None, fx=scale, fy=scale, interpolation=cv2.INTER_LANCZOS4)
@@ -61,6 +69,8 @@ def main() -> int:
     ap.add_argument("--scale", type=float, default=1.0,
                     help="1.0 = пиксель в пиксель (по умолчанию)")
     ap.add_argument("--out", default="cutouts")
+    ap.add_argument("--style", default=None, choices=sorted(S.VARIANTS),
+                    help="рисовать объёмный бортик вместо красной линии")
     args = ap.parse_args()
 
     files = args.images or [
@@ -74,7 +84,7 @@ def main() -> int:
         print(os.path.relpath(f, ROOT))
         sh = D.detect_sheet(f)
         slots = args.slots if args.slots is not None else list(range(args.n))
-        cut(f, slots, outdir, scale=args.scale)
+        cut(f, slots, outdir, scale=args.scale, style=args.style)
     return 0
 
 
