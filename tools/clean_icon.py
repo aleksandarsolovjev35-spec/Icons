@@ -58,10 +58,10 @@ def edge_band(L: np.ndarray, lo: float = 11.0, hi: float = 30.0) -> np.ndarray:
 PRESETS = {
     # detail — сколько исходной фактуры возвращается поверх чистки (0..1):
     # в ровных заливках возвращается мало, у деталей — больше.
-    "soft":     dict(hL=8.0, hC=4.0, t=7, s=15, soft=0.0, detail=0.45),
-    "normal":   dict(hL=12.0, hC=5.0, t=7, s=15, soft=0.0, detail=0.55),
-    "strong":   dict(hL=16.0, hC=6.0, t=7, s=17, soft=0.0, detail=0.35),
-    "max":      dict(hL=22.0, hC=8.0, t=9, s=21, soft=0.0, detail=0.25),
+    "soft":     dict(hL=8.0, hC=4.0, t=7, s=15, soft=0.0, detail=0.60),
+    "normal":   dict(hL=12.0, hC=5.0, t=7, s=15, soft=0.0, detail=0.70),
+    "strong":   dict(hL=16.0, hC=6.0, t=7, s=17, soft=0.0, detail=0.50),
+    "max":      dict(hL=22.0, hC=8.0, t=9, s=21, soft=0.0, detail=0.40),
     # частотный способ (альтернатива)
     "freq":     dict(T=(6.0, 4.0, 4.0), soft=0.0, detail=0.0),
 }
