@@ -50,9 +50,27 @@ def edge_band(L: np.ndarray, lo: float = 11.0, hi: float = 30.0) -> np.ndarray:
     return cv2.GaussianBlur(m, (0, 0), 0.8) * 0.5
 
 
+# ---------------------------------------------------------------------- presets
+PRESETS = {
+    # мягко: только явный мусор, рисунок почти не меняется
+    "gentle": dict(chroma=1.0, cmed=5, csig=1.4, passes=1, mthr=10, mrad=3,
+                   meps=30, unsharp=0.0),
+    # по умолчанию: цвет чистится сильно, яркость — 2 прохода по плоским зонам,
+    # контуры возвращаются лёгким unsharp только по маске краёв
+    "strong": dict(chroma=1.0, cmed=7, csig=2.5, passes=2, mthr=14, mrad=6,
+                   meps=120, unsharp=0.35),
+    # максимум: для сильно пережатых листов (следить за мелкими деталями)
+    "max":    dict(chroma=1.0, cmed=9, csig=3.5, passes=3, mthr=16, mrad=10,
+                   meps=300, unsharp=0.6),
+}
+
+
 # ------------------------------------------------------------------- cleaning
 def clean(img: np.ndarray, chroma: float = 1.0, luma: float = 0.8,
-          edge_thr: float = 10.0, protect: int = 1, ringing: bool = True) -> np.ndarray:
+          edge_thr: float = 10.0, protect: int = 1, ringing: bool = True,
+          preset: str | None = None) -> np.ndarray:
+    if preset:
+        return clean_preset(img, preset)
     lab = cv2.cvtColor(img, cv2.COLOR_BGR2LAB)
     L, A, B = [c.astype(np.float32) for c in cv2.split(lab)]
     m = flat_mask(L, edge_thr, protect)
@@ -89,7 +107,52 @@ def clean(img: np.ndarray, chroma: float = 1.0, luma: float = 0.8,
     return out
 
 
+def clean_preset(img: np.ndarray, preset: str = "strong") -> np.ndarray:
+    """Чистка по пресету: хрома — медиана + сглаживание, яркость — guided
+    по маске плоских зон в несколько проходов, затем лёгкий возврат резкости
+    только на контурах (без гало: маска краёв узкая)."""
+    p = dict(PRESETS[preset])
+    k = float(np.clip(p["chroma"], 0.0, 2.0))
+    lab = cv2.cvtColor(img, cv2.COLOR_BGR2LAB)
+    L, A, B = [c.astype(np.float32) for c in cv2.split(lab)]
+
+    # --- 1. хрома
+    A_med = cv2.medianBlur(np.clip(A, 0, 255).astype(np.uint8), p["cmed"]).astype(np.float32)
+    B_med = cv2.medianBlur(np.clip(B, 0, 255).astype(np.uint8), p["cmed"]).astype(np.float32)
+    A_t = 0.45 * A_med + 0.55 * cv2.GaussianBlur(A, (0, 0), p["csig"])
+    B_t = 0.45 * B_med + 0.55 * cv2.GaussianBlur(B, (0, 0), p["csig"])
+    A = A + (A_t - A) * k
+    B = B + (B_t - B) * k
+
+    # --- 2. яркость: guided-фильтр только в плоских зонах, несколько проходов
+    for _ in range(int(p["passes"])):
+        m = flat_mask(L, p["mthr"], 1)
+        L8 = np.clip(L, 0, 255).astype(np.uint8)
+        if hasattr(cv2, "ximgproc"):
+            L_g = cv2.ximgproc.guidedFilter(L8, L8, int(p["mrad"]),
+                                            float(p["meps"])).astype(np.float32)
+        else:
+            L_g = cv2.bilateralFilter(L, int(p["mrad"]), 22, 3.0)
+        L_m = cv2.medianBlur(L8, 3).astype(np.float32)
+        L_s = 0.35 * L_m + 0.65 * L_g
+        L = L + (L_s - L) * np.clip(m, 0.0, 1.0)
+
+    # --- 3. возврат резкости по контурам (узкая маска — без ореолов)
+    if p["unsharp"] > 0:
+        hp = L - cv2.GaussianBlur(L, (0, 0), 1.5)
+        em = np.clip((_edges(L) - 6.0) / 24.0, 0.0, 1.0)
+        L = L + hp * float(p["unsharp"]) * em
+
+    return cv2.cvtColor(np.clip(np.stack([L, A, B], -1), 0, 255).astype(np.uint8),
+                        cv2.COLOR_LAB2BGR)
+
+
 # -------------------------------------------------------------------- metrics
+def _ring(L: np.ndarray, edge: np.ndarray) -> float:
+    near = cv2.dilate(edge.astype(np.uint8), np.ones((7, 7), np.uint8)).astype(bool) & ~edge
+    return float(np.abs(L - cv2.GaussianBlur(L, (0, 0), 1.0))[near].mean())
+
+
 def metrics(img: np.ndarray) -> dict:
     lab = cv2.cvtColor(img, cv2.COLOR_BGR2LAB).astype(np.float32)
     L, A, B = lab[..., 0], lab[..., 1], lab[..., 2]
@@ -106,6 +169,7 @@ def metrics(img: np.ndarray) -> dict:
         "цветной шум (a/b)": round(float((md(A)[flat].mean() + md(B)[flat].mean()) / 2), 2),
         "шум яркости": round(float(md(L)[flat].mean()), 2),
         "резкость контуров": round(float(lap[edge].mean()), 1),
+        "звон у контуров": round(_ring(L, edge), 2),
         "средняя яркость": round(float(L.mean()), 1),
     }
 
@@ -114,6 +178,8 @@ def main() -> int:
     ap = argparse.ArgumentParser(description="Чистка иконок от JPEG-шума")
     ap.add_argument("images", nargs="+")
     ap.add_argument("-o", "--out", default=None)
+    ap.add_argument("--preset", default="strong", choices=sorted(PRESETS),
+                    help="готовый режим чистки (по умолчанию strong)")
     ap.add_argument("--chroma", type=float, default=1.0, help="сила чистки цвета 0..2")
     ap.add_argument("--luma", type=float, default=0.8, help="сила чистки яркости 0..2")
     ap.add_argument("--edge-thr", type=float, default=10.0)
@@ -126,8 +192,9 @@ def main() -> int:
         img = cv2.imread(src)
         if img is None:
             raise SystemExit(f"не читается: {src}")
-        res = clean(img, args.chroma, args.luma, args.edge_thr,
-                    ringing=not args.no_ringing)
+        res = clean_preset(img, args.preset) if args.preset else \
+            clean(img, args.chroma, args.luma, args.edge_thr,
+                  ringing=not args.no_ringing)
         if args.out and len(args.images) == 1:
             dst = args.out
         else:
