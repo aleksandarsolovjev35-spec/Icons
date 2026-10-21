@@ -56,13 +56,14 @@ def edge_band(L: np.ndarray, lo: float = 11.0, hi: float = 30.0) -> np.ndarray:
 
 # ---------------------------------------------------------------------- presets
 PRESETS = {
-    # по умолчанию: NLM — усредняет похожие фрагменты кадра, форму не меняет
-    "soft":     dict(hL=8.0, hC=4.0, t=7, s=15, soft=0.15),
-    "normal":   dict(hL=12.0, hC=5.0, t=7, s=15, soft=0.0),
-    "strong":   dict(hL=16.0, hC=6.0, t=7, s=17, soft=0.0),
-    "max":      dict(hL=22.0, hC=8.0, t=9, s=21, soft=0.0),
-    # частотный способ (предыдущая версия) — тоже доступен
-    "freq":     dict(T=(6.0, 4.0, 4.0), soft=0.0),
+    # detail — сколько исходной фактуры возвращается поверх чистки (0..1):
+    # в ровных заливках возвращается мало, у деталей — больше.
+    "soft":     dict(hL=8.0, hC=4.0, t=7, s=15, soft=0.0, detail=0.30),
+    "normal":   dict(hL=12.0, hC=5.0, t=7, s=15, soft=0.0, detail=0.40),
+    "strong":   dict(hL=16.0, hC=6.0, t=7, s=17, soft=0.0, detail=0.25),
+    "max":      dict(hL=22.0, hC=8.0, t=9, s=21, soft=0.0, detail=0.15),
+    # частотный способ (альтернатива)
+    "freq":     dict(T=(6.0, 4.0, 4.0), soft=0.0, detail=0.0),
 }
 
 
@@ -172,6 +173,25 @@ def _shrink(d: np.ndarray, T: float, soft: float = 2.0) -> np.ndarray:
     return np.sign(d) * np.maximum(a - T, 0.0) * k
 
 
+def restore_detail(src: np.ndarray, cleaned: np.ndarray,
+                   amount: float = 0.0) -> np.ndarray:
+    """Возврат части исходной фактуры поверх чистки.
+
+    Смешиваем не «всё подряд»: вес исходника растёт там, где есть мелкая
+    структура (там теряются детали), и почти нулевой в ровных заливках (там
+    возвращать нечего, кроме шума). Вес дополнительно сглажен, чтобы не
+    появилось границы между зонами."""
+    if amount <= 0:
+        return cleaned
+    L = cv2.cvtColor(src, cv2.COLOR_BGR2LAB)[..., 0].astype(np.float32)
+    hp = np.abs(L - cv2.medianBlur(np.clip(L, 0, 255).astype(np.uint8), 3).astype(np.float32))
+    w = np.clip((hp - 6.0) / 18.0, 0.0, 1.0)
+    w = cv2.GaussianBlur(w, (0, 0), 1.2)
+    alpha = (float(amount) * (0.30 + 0.70 * w))[..., None]
+    return np.clip(cleaned.astype(np.float32) + (src.astype(np.float32) - cleaned.astype(np.float32)) * alpha,
+                   0, 255).astype(np.uint8)
+
+
 def clean_fill(img: np.ndarray, preset: str = "normal") -> np.ndarray:
     """NLM (non-local means): пиксель заменяется средним по похожим на его
     окрестность фрагментам всего кадра, с весом по схожести. Шум на заливке
@@ -189,6 +209,7 @@ def clean_fill(img: np.ndarray, preset: str = "normal") -> np.ndarray:
         ch.append(cv2.fastNlMeansDenoising(lab[..., i], None, float(h),
                                            int(p["t"]), int(p["s"])))
     res = cv2.cvtColor(np.stack(ch, -1), cv2.COLOR_LAB2BGR)
+    res = restore_detail(img, res, float(p.get("detail", 0.0)))
     return soften_edges(res, float(p.get("soft", 0.0)))
 
 
@@ -324,6 +345,8 @@ def main() -> int:
                     help="сколько проходов mean shift (1..4)")
     ap.add_argument("--soft-edges", type=float, default=None,
                     help="смягчение кромок 0..1 (0 — жёсткие)")
+    ap.add_argument("--detail", type=float, default=None,
+                    help="возврат исходной фактуры 0..1 (0 — только чистка)")
     ap.add_argument("--chroma", type=float, default=1.0, help="сила чистки цвета 0..2")
     ap.add_argument("--luma", type=float, default=0.8, help="сила чистки яркости 0..2")
     ap.add_argument("--edge-thr", type=float, default=10.0)
@@ -336,7 +359,8 @@ def main() -> int:
         img = cv2.imread(src)
         if img is None:
             raise SystemExit(f"не читается: {src}")
-        if args.protect is not None or args.iters is not None or args.soft_edges is not None:
+        if args.protect is not None or args.iters is not None \
+                or args.soft_edges is not None or args.detail is not None:
             p = dict(PRESETS[args.preset])
             if args.protect is not None:
                 p["dil"] = args.protect
@@ -345,8 +369,13 @@ def main() -> int:
                 p["it"] = args.iters
             if args.soft_edges is not None:
                 p["soft"] = args.soft_edges
+            if args.detail is not None:
+                p["detail"] = args.detail
             PRESETS["_custom"] = p
-            res = clean_fill_ms(img, "_custom")
+            if "hL" in p or "T" in p:
+                res = clean_fill(img, "_custom")
+            else:
+                res = clean_fill_ms(img, "_custom")
         else:
             res = clean_fill(img, args.preset) if args.preset else \
                 clean(img, args.chroma, args.luma, args.edge_thr,
