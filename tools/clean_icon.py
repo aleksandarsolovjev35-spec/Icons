@@ -7,9 +7,11 @@ clean_icon.py — убрать JPEG-шум с иконки, не размыва�
      В JPEG хрома и так лежит в половинном разрешении (4:2:0) и квантуется
      грубее яркости, поэтому её можно сглаживать смело, без потери деталей:
      рисунок почти целиком держится на яркости.
-  2. ЯРКОСТНЫЙ ШУМ и БЛОЧНОСТЬ 8×8 — дрожание яркости на плато: аккуратный
-     медианный фильтр + guided-фильтр малого радиуса, ТОЛЬКО в плоских зонах
-     (маска по градиенту яркости), поэтому контуры и мелкие детали не мылятся.
+  2. ШУМ НА ЗАЛИВКАХ и БЛОЧНОСТЬ 8×8 — «сыпь» там, где по рисунку ровный цвет.
+     Лечится mean shift по LAB: шум схлопывается в один тон, кромки остаются
+     резкими. Результат подмешивается только ВНЕ защищённой зоны (детектор
+     деталей — по амплитуде мелкой структуры), поэтому линии и полутона
+     остаются исходными (Δ ≤ 2 из 255).
   3. ЗВОН у контуров (mosquito noise) — лёгкое подавление в узкой полосе
      вокруг сильных кромок, край остаётся резким.
 
@@ -52,18 +54,14 @@ def edge_band(L: np.ndarray, lo: float = 11.0, hi: float = 30.0) -> np.ndarray:
 
 # ---------------------------------------------------------------------- presets
 PRESETS = {
-    # едва касаясь: убирает только самый заметный мусор
-    "gentle": dict(amount=0.35, ck=0.70, cmed=5, csig=1.4, d=5, sc=14, ss=1.0,
-                   grad=2, geps=40, passes=1, lo=14, hi=26),
-    # по умолчанию: заметно чище, но фактура и полутона рисунка на месте
-    "normal": dict(amount=0.60, ck=0.90, cmed=7, csig=2.5, d=7, sc=20, ss=1.0,
-                   grad=2, geps=60, passes=1, lo=10, hi=22),
-    # сильно: заливки почти гладкие (для пережатых листов)
-    "strong": dict(amount=1.00, ck=1.00, cmed=7, csig=2.5, d=7, sc=20, ss=1.0,
-                   grad=2, geps=60, passes=1, lo=10, hi=22),
-    # максимум
-    "max":    dict(amount=1.00, ck=1.00, cmed=9, csig=3.5, d=7, sc=30, ss=1.2,
-                   grad=3, geps=100, passes=2, lo=8, hi=18),
+    # сильная защита: чистим только глубокие заливки
+    "gentle": dict(it=1, sp=2, sr=10, amp=28, ramp=7, dil=2),
+    # по умолчанию: заливки выравниваются, детали не сдвигаются (Δ ≤ 2)
+    "normal": dict(it=2, sp=2, sr=10, amp=25, ramp=6, dil=1),
+    # чуть сильнее по заливкам
+    "strong": dict(it=3, sp=2, sr=10, amp=25, ramp=6, dil=1),
+    # максимум: защита минимальна
+    "max":    dict(it=3, sp=2, sr=10, amp=20, ramp=5, dil=0),
 }
 
 
@@ -122,6 +120,48 @@ def fill_mask(L: np.ndarray, lo: float = 10.0, hi: float = 22.0,
     hp = np.abs(L - cv2.medianBlur(L8, 3).astype(np.float32))
     m = 1.0 - np.clip((hp - lo) / max(hi - lo, 1e-6), 0.0, 1.0)
     return cv2.GaussianBlur(m, (0, 0), soft)
+
+
+def guard_mask(L: np.ndarray, amp: float = 25.0, ramp: float = 6.0,
+               dil: int = 1, smooth: float = 1.5) -> np.ndarray:
+    """1 = защищённая зона (кромки, тонкие линии, полутоновые переходы).
+
+    Детектор двойной, иначе шум и рисунок не разделить:
+      • `amp`  — амплитуда мелкой структуры по СЫРОЙ яркости: тонкая линия и
+                 жёсткая кромка дают 25+, шум 3..10;
+      • `ramp` — то же, но по сглаженной яркости: шум там гаснет до ±3, а
+                 мягкий полутоновой переход (градиент 6..15 на пиксель) виден.
+    Пиксель считается деталью, если сработал любой из критериев.
+    """
+    L8 = np.clip(L, 0, 255).astype(np.uint8)
+    h1 = np.abs(L - cv2.medianBlur(L8, 3).astype(np.float32))
+    G = cv2.GaussianBlur(L, (0, 0), smooth)
+    h2 = np.abs(G - cv2.medianBlur(np.clip(G, 0, 255).astype(np.uint8), 3).astype(np.float32))
+    p = ((h1 > amp) | (h2 > ramp)).astype(np.uint8)
+    if dil:
+        p = cv2.dilate(p, np.ones((2 * dil + 1, 2 * dil + 1), np.uint8))
+    return p.astype(np.float32)
+
+
+def clean_fill(img: np.ndarray, preset: str = "normal") -> np.ndarray:
+    """Mean shift по LAB: шум на заливках «схлопывается» в один тон, кромки
+    остаются резкими (режим берётся по моде, а не среднее). Затем результат
+    подмешивается ТОЛЬКО вне защищённой зоны — пиксели кромок, тонких линий и
+    полутоновых переходов остаются байт-в-байт исходными."""
+    p = PRESETS[preset]
+    lab8 = cv2.cvtColor(img, cv2.COLOR_BGR2LAB)
+    cur = lab8
+    for _ in range(int(p["it"])):
+        cur = cv2.pyrMeanShiftFiltering(cur, int(p["sp"]), int(p["sr"]))
+    L0 = lab8[..., 0].astype(np.float32)
+    A0 = lab8[..., 1].astype(np.float32)
+    B0 = lab8[..., 2].astype(np.float32)
+    w = 1.0 - guard_mask(L0, p["amp"], p["ramp"], int(p["dil"]))
+    Lm, Am, Bm = (cur[..., i].astype(np.float32) for i in range(3))
+    out = np.stack([L0 + (Lm - L0) * w,
+                    A0 + (Am - A0) * w,
+                    B0 + (Bm - B0) * w], -1)
+    return cv2.cvtColor(np.clip(out, 0, 255).astype(np.uint8), cv2.COLOR_LAB2BGR)
 
 
 def clean_preset(img: np.ndarray, preset: str = "normal") -> np.ndarray:
@@ -198,8 +238,10 @@ def main() -> int:
     ap.add_argument("-o", "--out", default=None)
     ap.add_argument("--preset", default="normal", choices=sorted(PRESETS),
                     help="готовый режим чистки (по умолчанию normal)")
-    ap.add_argument("--amount", type=float, default=None,
-                    help="сила чистки 0..1 поверх пресета (0.3 — едва, 1 — максимум)")
+    ap.add_argument("--protect", type=int, default=None,
+                    help="ширина защитной зоны вокруг деталей в px (0..3)")
+    ap.add_argument("--iters", type=int, default=None,
+                    help="сколько проходов mean shift (1..4)")
     ap.add_argument("--chroma", type=float, default=1.0, help="сила чистки цвета 0..2")
     ap.add_argument("--luma", type=float, default=0.8, help="сила чистки яркости 0..2")
     ap.add_argument("--edge-thr", type=float, default=10.0)
@@ -212,15 +254,16 @@ def main() -> int:
         img = cv2.imread(src)
         if img is None:
             raise SystemExit(f"не читается: {src}")
-        if args.amount is not None:
+        if args.protect is not None or args.iters is not None:
             p = dict(PRESETS[args.preset])
-            p["amount"] = args.amount
-            if "ck" in p and p["ck"] < args.amount:
-                p["ck"] = args.amount
+            if args.protect is not None:
+                p["dil"] = args.protect
+            if args.iters is not None:
+                p["it"] = args.iters
             PRESETS["_custom"] = p
-            res = clean_preset(img, "_custom")
+            res = clean_fill(img, "_custom")
         else:
-            res = clean_preset(img, args.preset) if args.preset else \
+            res = clean_fill(img, args.preset) if args.preset else \
                 clean(img, args.chroma, args.luma, args.edge_thr,
                       ringing=not args.no_ringing)
         if args.out and len(args.images) == 1:
