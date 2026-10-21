@@ -89,6 +89,23 @@ python3 tools/cut_icons.py --style sharp --radius 0 --n 1 --out cutouts_styled
 Внешняя часть при `radius = 0` считается по L∞-метрике (`sharp_outside`),
 поэтому прямые углы сохраняются и у внешней кромки борта.
 
+## Чистка иконок от JPEG-шума
+
+```bash
+python3 tools/analyze_noise.py samples/icon_sharp_bezel.png    # разбор шума
+python3 tools/clean_icon.py samples/icon_sharp_bezel.png -o samples/icon_clean.png
+python3 tools/clean_icon.py in.png -o out.png --chroma 1.0 --luma 0.8
+```
+
+Что за шум (замерено на листах): **цветной шум по хроме** (крапинки
+зелёно-сиреневого на ровном сером — следствие JPEG 4:2:0 и грубого квантования
+хромы), **дрожание яркости ~1 ед. и блочность 8×8**, **звон у светлых контуров**.
+
+`clean_icon.py` давит хрому медианой 5×5 + лёгкое сглаживание (цветовые зоны не
+размазываются), а яркость чистит только внутри маски плоских участков
+(медиана 3×3 + guided-фильтр), поэтому контуры и мелкие детали остаются
+резкими: резкость кромок в прогоне 61.2 → 61.8, цветной шум 0.31 → 0.18.
+
 ## Нарезка иконок с обводкой
 
 ```bash
@@ -124,6 +141,8 @@ python3 tools/check_sizes.py            # лимит 160 px
 | `tools/check_sizes.py` | контроль лимита 160 px + картинка с крупнейшими рамками |
 | `tools/cut_icons.py` | вырезает отдельные иконки вместе с обводкой (`cutouts/`) |
 | `tools/style_frame.py` | объёмный чёрный бортик с тенями (`styled/`) |
+| `tools/clean_icon.py` | чистка от JPEG-шума (хрома/яркость/звон) |
+| `tools/analyze_noise.py` | разбор шума и метрики до/после |
 | `annotated/frames.csv` / `.json` | по строке на лист: сетка, cell, confidence, все bbox |
 | `annotated/size_check.csv` / `.jpg` | размеры всех 11 300 рамок / 9 самых крупных |
 | `annotated/REPORT.md` | сводка по прогону |
