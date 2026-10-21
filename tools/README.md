@@ -112,27 +112,37 @@ python3 tools/clean_icon.py in.png -o out.png --chroma 1.0 --luma 0.8
    ровных заливках (там возвращать нечего, кроме шума). Сила — `--detail 0..1`.
 3. `soften_edges()` — при желании смягчает полосу кромок (`--soft-edges 0..1`).
 
-Режимы: `soft` (detail 0.60), **`normal` (по умолчанию, detail 0.70)**, `strong` (0.50), `max` (0.40).
-Движки-альтернативы: `--preset freq` (частотный), `--protect/--iters`
-(mean shift, `clean_fill_ms`).
+Режимы (чем бережнее — тем больше исходной фактуры остаётся):
 
-| метрика | до | normal | strong |
+| режим | hL | detail | сохранность фактуры |
 |---|---|---|---|
-| шум яркости | 0.29 | **0.24** | — |
-| шум на заливках | 1.29 | 0.76 | 0.53 |
-| цветной шум a/b | 0.31 | 0.29 | 0.20 |
-| резкость контуров | 61.2 | 66.8 | 70.8 |
+| `soft` | 6 | 0.95 | ~99 % |
+| **`normal`** (по умолчанию) | 10 | 0.90 | ~94 % |
+| `strong` | 14 | 0.80 | ~88 % |
+| `max` | 20 | 0.60 | ~78 % |
+
+`--detail` возвращает исходник по яркости сильнее, чем по цвету (цветной шум —
+самая заметная грязь, а «детальность» рисуется яркостью). `--soft-edges`
+смягчает полосу кромок. Движки-альтернативы: `--preset freq` (частотный),
+`--protect/--iters` (mean shift).
+
+| метрика | череп: до → normal | зелье: до → normal |
+|---|---|---|
+| шум на заливках | 1.29 → **0.79** | 0.73 → **0.49** |
+| шум яркости | 0.29 → 0.19 | 0.09 → 0.06 |
+| цветной шум a/b | 0.31 → 0.26 | 0.13 → 0.09 |
+| резкость контуров | 61.2 → 64.5 | 53.2 → 56.0 |
 
 Подбор баланса «чистота / детали»:
 
 ```bash
-python3 tools/clean_icon.py in.png -o out.png --detail 0     # максимум чистоты
-python3 tools/clean_icon.py in.png -o out.png --detail 0.70  # по умолчанию
-python3 tools/clean_icon.py in.png -o out.png --detail 0.85  # почти исходная фактура
+python3 tools/clean_icon.py in.png -o out.png --detail 0.9   # по умолчанию
+python3 tools/clean_icon.py in.png -o out.png --detail 1.0   # фактура как есть
+python3 tools/clean_icon.py in.png -o out.png --preset soft  # самый бережный
 ```
 
-Сравнения: `samples/icon_clean_compare.jpg` (вся иконка) и
-`samples/icon_clean_zoom.jpg` (текстурная зона, ×10, detail 0.55 / 0.7 / 0.8).
+Сравнения: `samples/two_icons_clean.jpg` (череп и зелье, ×3),
+`samples/icon_clean_zoom.jpg`, `samples/icon2_zoom.jpg`.
 
 ## Нарезка иконок с обводкой
 
