@@ -52,14 +52,17 @@ def edge_band(L: np.ndarray, lo: float = 11.0, hi: float = 30.0) -> np.ndarray:
 
 # ---------------------------------------------------------------------- presets
 PRESETS = {
-    # мягко: только явный мусор, рисунок почти не меняется
-    "gentle": dict(chroma=1.0, cmed=5, csig=1.4, d=5, sc=14, ss=1.0,
+    # едва касаясь: убирает только самый заметный мусор
+    "gentle": dict(amount=0.35, ck=0.70, cmed=5, csig=1.4, d=5, sc=14, ss=1.0,
                    grad=2, geps=40, passes=1, lo=14, hi=26),
-    # по умолчанию: шум на заливках убирается уверенно, края и тонкие линии целы
-    "strong": dict(chroma=1.0, cmed=7, csig=2.5, d=7, sc=20, ss=1.0,
+    # по умолчанию: заметно чище, но фактура и полутона рисунка на месте
+    "normal": dict(amount=0.60, ck=0.90, cmed=7, csig=2.5, d=7, sc=20, ss=1.0,
                    grad=2, geps=60, passes=1, lo=10, hi=22),
-    # максимум: сильно пережатые листы (следить за мелкими деталями)
-    "max":    dict(chroma=1.0, cmed=9, csig=3.5, d=7, sc=30, ss=1.2,
+    # сильно: заливки почти гладкие (для пережатых листов)
+    "strong": dict(amount=1.00, ck=1.00, cmed=7, csig=2.5, d=7, sc=20, ss=1.0,
+                   grad=2, geps=60, passes=1, lo=10, hi=22),
+    # максимум
+    "max":    dict(amount=1.00, ck=1.00, cmed=9, csig=3.5, d=7, sc=30, ss=1.2,
                    grad=3, geps=100, passes=2, lo=8, hi=18),
 }
 
@@ -121,12 +124,13 @@ def fill_mask(L: np.ndarray, lo: float = 10.0, hi: float = 22.0,
     return cv2.GaussianBlur(m, (0, 0), soft)
 
 
-def clean_preset(img: np.ndarray, preset: str = "strong") -> np.ndarray:
+def clean_preset(img: np.ndarray, preset: str = "normal") -> np.ndarray:
     """Чистка по пресету: хрома — медиана + сглаживание, яркость — guided
     по маске плоских зон в несколько проходов, затем лёгкий возврат резкости
     только на контурах (без гало: маска краёв узкая)."""
     p = dict(PRESETS[preset])
-    k = float(np.clip(p["chroma"], 0.0, 2.0))
+    amt = float(np.clip(p["amount"], 0.0, 1.0))     # сила чистки яркости
+    k = float(np.clip(p.get("ck", amt), 0.0, 1.0))  # сила чистки цвета
     lab = cv2.cvtColor(img, cv2.COLOR_BGR2LAB)
     L, A, B = [c.astype(np.float32) for c in cv2.split(lab)]
 
@@ -140,7 +144,7 @@ def clean_preset(img: np.ndarray, preset: str = "strong") -> np.ndarray:
     #     bilateral убирает крапинки (малый пространственный радиус — тонкие
     #     линии не разъезжаются), guided добивает остаток мягко.
     for _ in range(int(p["passes"])):
-        w = fill_mask(L, p["lo"], p["hi"])
+        w = fill_mask(L, p["lo"], p["hi"]) * amt
         Lb = cv2.bilateralFilter(L, int(p["d"]), float(p["sc"]), float(p["ss"]))
         L = L + (Lb - L) * w
         Lg = cv2.ximgproc.guidedFilter(L, L, int(p["grad"]), float(p["geps"])) \
@@ -192,8 +196,10 @@ def main() -> int:
     ap = argparse.ArgumentParser(description="Чистка иконок от JPEG-шума")
     ap.add_argument("images", nargs="+")
     ap.add_argument("-o", "--out", default=None)
-    ap.add_argument("--preset", default="strong", choices=sorted(PRESETS),
-                    help="готовый режим чистки (по умолчанию strong)")
+    ap.add_argument("--preset", default="normal", choices=sorted(PRESETS),
+                    help="готовый режим чистки (по умолчанию normal)")
+    ap.add_argument("--amount", type=float, default=None,
+                    help="сила чистки 0..1 поверх пресета (0.3 — едва, 1 — максимум)")
     ap.add_argument("--chroma", type=float, default=1.0, help="сила чистки цвета 0..2")
     ap.add_argument("--luma", type=float, default=0.8, help="сила чистки яркости 0..2")
     ap.add_argument("--edge-thr", type=float, default=10.0)
@@ -206,9 +212,17 @@ def main() -> int:
         img = cv2.imread(src)
         if img is None:
             raise SystemExit(f"не читается: {src}")
-        res = clean_preset(img, args.preset) if args.preset else \
-            clean(img, args.chroma, args.luma, args.edge_thr,
-                  ringing=not args.no_ringing)
+        if args.amount is not None:
+            p = dict(PRESETS[args.preset])
+            p["amount"] = args.amount
+            if "ck" in p and p["ck"] < args.amount:
+                p["ck"] = args.amount
+            PRESETS["_custom"] = p
+            res = clean_preset(img, "_custom")
+        else:
+            res = clean_preset(img, args.preset) if args.preset else \
+                clean(img, args.chroma, args.luma, args.edge_thr,
+                      ringing=not args.no_ringing)
         if args.out and len(args.images) == 1:
             dst = args.out
         else:
