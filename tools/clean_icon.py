@@ -54,14 +54,14 @@ def edge_band(L: np.ndarray, lo: float = 11.0, hi: float = 30.0) -> np.ndarray:
 
 # ---------------------------------------------------------------------- presets
 PRESETS = {
-    # сильная защита: чистим только глубокие заливки
-    "gentle": dict(it=1, sp=2, sr=10, amp=28, ramp=7, dil=2),
-    # по умолчанию: заливки выравниваются, детали не сдвигаются (Δ ≤ 2)
-    "normal": dict(it=2, sp=2, sr=10, amp=25, ramp=6, dil=1),
-    # чуть сильнее по заливкам
-    "strong": dict(it=3, sp=2, sr=10, amp=25, ramp=6, dil=1),
-    # максимум: защита минимальна
-    "max":    dict(it=3, sp=2, sr=10, amp=20, ramp=5, dil=0),
+    # по умолчанию: заливки чистые, кромки чуть смягчены (без «острого» вида)
+    "soft":     dict(it=2, sp=2, sr=10, amp=25, ramp=6, dil=2, feather=0.6, soft=0.35),
+    # кромки почти как в исходнике, чистка ближе к контурам
+    "normal":   dict(it=2, sp=2, sr=10, amp=25, ramp=6, dil=1, feather=0.4, soft=0.35),
+    # сильнее по заливкам, кромки максимально жёсткие
+    "strong":   dict(it=3, sp=2, sr=10, amp=20, ramp=5, dil=0, feather=0.4, soft=0.0),
+    # максимум: без защиты, без смягчения
+    "max":      dict(it=3, sp=2, sr=10, amp=18, ramp=4, dil=0, feather=0.0, soft=0.0),
 }
 
 
@@ -123,7 +123,8 @@ def fill_mask(L: np.ndarray, lo: float = 10.0, hi: float = 22.0,
 
 
 def guard_mask(L: np.ndarray, amp: float = 25.0, ramp: float = 6.0,
-               dil: int = 1, smooth: float = 1.5) -> np.ndarray:
+               dil: int = 1, feather: float = 0.5,
+               smooth: float = 1.5) -> np.ndarray:
     """1 = защищённая зона (кромки, тонкие линии, полутоновые переходы).
 
     Детектор двойной, иначе шум и рисунок не разделить:
@@ -140,10 +141,29 @@ def guard_mask(L: np.ndarray, amp: float = 25.0, ramp: float = 6.0,
     p = ((h1 > amp) | (h2 > ramp)).astype(np.uint8)
     if dil:
         p = cv2.dilate(p, np.ones((2 * dil + 1, 2 * dil + 1), np.uint8))
-    return p.astype(np.float32)
+    p = p.astype(np.float32)
+    if feather:                       # мягкий край зоны — без видимого стыка
+        p = cv2.GaussianBlur(p, (0, 0), feather)
+    return p
 
 
-def clean_fill(img: np.ndarray, preset: str = "normal") -> np.ndarray:
+def soften_edges(img: np.ndarray, k: float = 0.5, band: int = 1,
+                 sigma: float = 0.7) -> np.ndarray:
+    """Лёгкое сглаживание ТОЛЬКО в полосе кромок: убирает «острую» иглу
+    контура после чистки, заливки и детали внутри не затрагивает."""
+    if k <= 0:
+        return img
+    g = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY).astype(np.float32)
+    m = (_edges(g) > 14).astype(np.uint8)
+    if band:
+        m = cv2.dilate(m, np.ones((2 * band + 1, 2 * band + 1), np.uint8))
+    m = cv2.GaussianBlur(m.astype(np.float32), (0, 0), 0.8) * float(k)
+    f = img.astype(np.float32)
+    blur = cv2.GaussianBlur(f, (0, 0), sigma)
+    return np.clip(f + (blur - f) * m[..., None], 0, 255).astype(np.uint8)
+
+
+def clean_fill(img: np.ndarray, preset: str = "soft") -> np.ndarray:
     """Mean shift по LAB: шум на заливках «схлопывается» в один тон, кромки
     остаются резкими (режим берётся по моде, а не среднее). Затем результат
     подмешивается ТОЛЬКО вне защищённой зоны — пиксели кромок, тонких линий и
@@ -156,12 +176,13 @@ def clean_fill(img: np.ndarray, preset: str = "normal") -> np.ndarray:
     L0 = lab8[..., 0].astype(np.float32)
     A0 = lab8[..., 1].astype(np.float32)
     B0 = lab8[..., 2].astype(np.float32)
-    w = 1.0 - guard_mask(L0, p["amp"], p["ramp"], int(p["dil"]))
+    w = 1.0 - guard_mask(L0, p["amp"], p["ramp"], int(p["dil"]), float(p["feather"]))
     Lm, Am, Bm = (cur[..., i].astype(np.float32) for i in range(3))
     out = np.stack([L0 + (Lm - L0) * w,
                     A0 + (Am - A0) * w,
                     B0 + (Bm - B0) * w], -1)
-    return cv2.cvtColor(np.clip(out, 0, 255).astype(np.uint8), cv2.COLOR_LAB2BGR)
+    res = cv2.cvtColor(np.clip(out, 0, 255).astype(np.uint8), cv2.COLOR_LAB2BGR)
+    return soften_edges(res, float(p.get("soft", 0.0)))
 
 
 def clean_preset(img: np.ndarray, preset: str = "normal") -> np.ndarray:
@@ -236,12 +257,14 @@ def main() -> int:
     ap = argparse.ArgumentParser(description="Чистка иконок от JPEG-шума")
     ap.add_argument("images", nargs="+")
     ap.add_argument("-o", "--out", default=None)
-    ap.add_argument("--preset", default="normal", choices=sorted(PRESETS),
+    ap.add_argument("--preset", default="soft", choices=sorted(PRESETS),
                     help="готовый режим чистки (по умолчанию normal)")
     ap.add_argument("--protect", type=int, default=None,
                     help="ширина защитной зоны вокруг деталей в px (0..3)")
     ap.add_argument("--iters", type=int, default=None,
                     help="сколько проходов mean shift (1..4)")
+    ap.add_argument("--soft-edges", type=float, default=None,
+                    help="смягчение кромок 0..1 (0 — жёсткие)")
     ap.add_argument("--chroma", type=float, default=1.0, help="сила чистки цвета 0..2")
     ap.add_argument("--luma", type=float, default=0.8, help="сила чистки яркости 0..2")
     ap.add_argument("--edge-thr", type=float, default=10.0)
@@ -254,12 +277,15 @@ def main() -> int:
         img = cv2.imread(src)
         if img is None:
             raise SystemExit(f"не читается: {src}")
-        if args.protect is not None or args.iters is not None:
+        if args.protect is not None or args.iters is not None or args.soft_edges is not None:
             p = dict(PRESETS[args.preset])
             if args.protect is not None:
                 p["dil"] = args.protect
+                p["feather"] = 0.6 if args.protect >= 2 else 0.4
             if args.iters is not None:
                 p["it"] = args.iters
+            if args.soft_edges is not None:
+                p["soft"] = args.soft_edges
             PRESETS["_custom"] = p
             res = clean_fill(img, "_custom")
         else:
