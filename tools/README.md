@@ -112,27 +112,27 @@ python3 tools/clean_icon.py in.png -o out.png --chroma 1.0 --luma 0.8
    ровных заливках (там возвращать нечего, кроме шума). Сила — `--detail 0..1`.
 3. `soften_edges()` — при желании смягчает полосу кромок (`--soft-edges 0..1`).
 
-Режимы: `soft`, **`normal` (по умолчанию, detail 0.4)**, `strong`, `max`.
+Режимы: `soft` (detail 0.45), **`normal` (по умолчанию, detail 0.55)**, `strong` (0.35), `max` (0.25).
 Движки-альтернативы: `--preset freq` (частотный), `--protect/--iters`
 (mean shift, `clean_fill_ms`).
 
 | метрика | до | normal | strong |
 |---|---|---|---|
-| шум яркости | 0.29 | **0.20** | — |
-| шум на заливках | 1.29 | 0.73 | 0.53 |
-| цветной шум a/b | 0.31 | 0.24 | 0.20 |
-| резкость контуров | 61.2 | 66.9 | 70.8 |
+| шум яркости | 0.29 | **0.21** | — |
+| шум на заливках | 1.29 | 0.74 | 0.53 |
+| цветной шум a/b | 0.31 | 0.25 | 0.20 |
+| резкость контуров | 61.2 | 66.8 | 70.8 |
 
 Подбор баланса «чистота / детали»:
 
 ```bash
 python3 tools/clean_icon.py in.png -o out.png --detail 0     # максимум чистоты
-python3 tools/clean_icon.py in.png -o out.png --detail 0.4   # по умолчанию
-python3 tools/clean_icon.py in.png -o out.png --detail 0.7   # почти исходная фактура
+python3 tools/clean_icon.py in.png -o out.png --detail 0.55  # по умолчанию
+python3 tools/clean_icon.py in.png -o out.png --detail 0.75  # почти исходная фактура
 ```
 
 Сравнения: `samples/icon_clean_compare.jpg` (вся иконка) и
-`samples/icon_clean_zoom.jpg` (текстурная зона, ×10, detail 0 / 0.4 / 0.7).
+`samples/icon_clean_zoom.jpg` (текстурная зона, ×10, detail 0 / 0.4 / 0.55).
 
 ## Нарезка иконок с обводкой
 
