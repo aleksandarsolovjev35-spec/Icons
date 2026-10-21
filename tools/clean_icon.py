@@ -8,10 +8,11 @@ clean_icon.py — убрать JPEG-шум с иконки, не размыва�
      грубее яркости, поэтому её можно сглаживать смело, без потери деталей:
      рисунок почти целиком держится на яркости.
   2. ШУМ НА ЗАЛИВКАХ и БЛОЧНОСТЬ 8×8 — «сыпь» там, где по рисунку ровный цвет.
-     Лечится mean shift по LAB: шум схлопывается в один тон, кромки остаются
-     резкими. Результат подмешивается только ВНЕ защищённой зоны (детектор
-     деталей — по амплитуде мелкой структуры), поэтому линии и полутона
-     остаются исходными (Δ ≤ 2 из 255).
+     Чистится ЧАСТОТНЫМ способом: раскладка на полосы σ = 1, 3, 7 px и гашение
+     в каждой только мелкой по амплитуде части (мягкий порог). Крупные
+     перепады — кромки, скругления, градиенты — не трогаются вовсе, поэтому
+     нет ни «надрезов» на гранях, ни ступенек на скруглениях, которые дают
+     методы, схлопывающие заливку в плато (mean shift/медиана).
   3. ЗВОН у контуров (mosquito noise) — лёгкое подавление в узкой полосе
      вокруг сильных кромок, край остаётся резким.
 
@@ -54,14 +55,11 @@ def edge_band(L: np.ndarray, lo: float = 11.0, hi: float = 30.0) -> np.ndarray:
 
 # ---------------------------------------------------------------------- presets
 PRESETS = {
-    # по умолчанию: заливки чистые, кромки чуть смягчены (без «острого» вида)
-    "soft":     dict(it=2, sp=2, sr=10, amp=25, ramp=6, dil=2, feather=0.6, soft=0.35),
-    # кромки почти как в исходнике, чистка ближе к контурам
-    "normal":   dict(it=2, sp=2, sr=10, amp=25, ramp=6, dil=1, feather=0.4, soft=0.35),
-    # сильнее по заливкам, кромки максимально жёсткие
-    "strong":   dict(it=3, sp=2, sr=10, amp=20, ramp=5, dil=0, feather=0.4, soft=0.0),
-    # максимум: без защиты, без смягчения
-    "max":      dict(it=3, sp=2, sr=10, amp=18, ramp=4, dil=0, feather=0.0, soft=0.0),
+    # по умолчанию: убирает «сыпь», градиенты и форму не меняет
+    "soft":     dict(T=(5.0, 3.5, 3.5), soft=0.20),
+    "normal":   dict(T=(6.0, 4.0, 4.0), soft=0.10),
+    "strong":   dict(T=(7.0, 5.0, 5.0), soft=0.0),
+    "max":      dict(T=(8.5, 6.0, 6.0), soft=0.0),
 }
 
 
@@ -163,7 +161,45 @@ def soften_edges(img: np.ndarray, k: float = 0.5, band: int = 1,
     return np.clip(f + (blur - f) * m[..., None], 0, 255).astype(np.uint8)
 
 
-def clean_fill(img: np.ndarray, preset: str = "soft") -> np.ndarray:
+def _shrink(d: np.ndarray, T: float, soft: float = 2.0) -> np.ndarray:
+    """Мягкий порог: амплитуду меньше T считаем шумом и гасим, больше T (кромки,
+    детали) оставляем как есть."""
+    a = np.abs(d)
+    k = np.clip((a - T) / max(soft, 1e-6), 0.0, 1.0)
+    return np.sign(d) * np.maximum(a - T, 0.0) * k
+
+
+def clean_fill(img: np.ndarray, preset: str = "normal") -> np.ndarray:
+    """Частотная чистка: изображение раскладывается на полосы (σ = 1, 3, 7 px),
+    в каждой гасится только мелкая по амплитуде часть — «сыпь» и блочность
+    JPEG, — а крупные перепады (кромки, градиенты, полутона) остаются ровно
+    такими, как были. Поэтому нет ни ступенек на скруглениях, ни «надрезов»
+    на гранях, которые дают методы, схлопывающие заливку в плато."""
+    p = PRESETS[preset]
+    T = tuple(p["T"])
+    lab = cv2.cvtColor(img, cv2.COLOR_BGR2LAB)
+    L0 = lab[..., 0].astype(np.float32)
+    A0 = lab[..., 1].astype(np.float32)
+    B0 = lab[..., 2].astype(np.float32)
+
+    # полосы: (L − σ1), (σ1 − σ3), (σ3 − σ7); основа — σ7
+    G = [L0] + [cv2.GaussianBlur(L0, (0, 0), s) for s in (1.0, 3.0, 7.0)]
+    L = G[-1].copy()
+    for i in range(3):
+        L = L + _shrink(G[i] - G[i + 1], T[i])
+
+    # хрома: медиана + сглаживание (зоны цвета не размазываются)
+    A = 0.35 * cv2.medianBlur(np.clip(A0, 0, 255).astype(np.uint8), 5).astype(np.float32) \
+        + 0.65 * cv2.GaussianBlur(A0, (0, 0), 1.5)
+    B = 0.35 * cv2.medianBlur(np.clip(B0, 0, 255).astype(np.uint8), 5).astype(np.float32) \
+        + 0.65 * cv2.GaussianBlur(B0, (0, 0), 1.5)
+
+    res = cv2.cvtColor(np.clip(np.stack([L, A, B], -1), 0, 255).astype(np.uint8),
+                       cv2.COLOR_LAB2BGR)
+    return soften_edges(res, float(p.get("soft", 0.0)))
+
+
+def clean_fill_ms(img: np.ndarray, preset: str = "normal") -> np.ndarray:
     """Mean shift по LAB: шум на заливках «схлопывается» в один тон, кромки
     остаются резкими (режим берётся по моде, а не среднее). Затем результат
     подмешивается ТОЛЬКО вне защищённой зоны — пиксели кромок, тонких линий и
@@ -257,7 +293,7 @@ def main() -> int:
     ap = argparse.ArgumentParser(description="Чистка иконок от JPEG-шума")
     ap.add_argument("images", nargs="+")
     ap.add_argument("-o", "--out", default=None)
-    ap.add_argument("--preset", default="soft", choices=sorted(PRESETS),
+    ap.add_argument("--preset", default="normal", choices=sorted(PRESETS),
                     help="готовый режим чистки (по умолчанию normal)")
     ap.add_argument("--protect", type=int, default=None,
                     help="ширина защитной зоны вокруг деталей в px (0..3)")
@@ -287,7 +323,7 @@ def main() -> int:
             if args.soft_edges is not None:
                 p["soft"] = args.soft_edges
             PRESETS["_custom"] = p
-            res = clean_fill(img, "_custom")
+            res = clean_fill_ms(img, "_custom")
         else:
             res = clean_fill(img, args.preset) if args.preset else \
                 clean(img, args.chroma, args.luma, args.edge_thr,
