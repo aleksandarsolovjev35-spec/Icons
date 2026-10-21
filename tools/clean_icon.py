@@ -53,15 +53,14 @@ def edge_band(L: np.ndarray, lo: float = 11.0, hi: float = 30.0) -> np.ndarray:
 # ---------------------------------------------------------------------- presets
 PRESETS = {
     # мягко: только явный мусор, рисунок почти не меняется
-    "gentle": dict(chroma=1.0, cmed=5, csig=1.4, passes=1, mthr=10, mrad=3,
-                   meps=30, unsharp=0.0),
-    # по умолчанию: цвет чистится сильно, яркость — 2 прохода по плоским зонам,
-    # контуры возвращаются лёгким unsharp только по маске краёв
-    "strong": dict(chroma=1.0, cmed=7, csig=2.5, passes=2, mthr=14, mrad=6,
-                   meps=120, unsharp=0.35),
-    # максимум: для сильно пережатых листов (следить за мелкими деталями)
-    "max":    dict(chroma=1.0, cmed=9, csig=3.5, passes=3, mthr=16, mrad=10,
-                   meps=300, unsharp=0.6),
+    "gentle": dict(chroma=1.0, cmed=5, csig=1.4, d=5, sc=14, ss=1.0,
+                   grad=2, geps=40, passes=1, lo=14, hi=26),
+    # по умолчанию: шум на заливках убирается уверенно, края и тонкие линии целы
+    "strong": dict(chroma=1.0, cmed=7, csig=2.5, d=7, sc=20, ss=1.0,
+                   grad=2, geps=60, passes=1, lo=10, hi=22),
+    # максимум: сильно пережатые листы (следить за мелкими деталями)
+    "max":    dict(chroma=1.0, cmed=9, csig=3.5, d=7, sc=30, ss=1.2,
+                   grad=3, geps=100, passes=2, lo=8, hi=18),
 }
 
 
@@ -107,6 +106,21 @@ def clean(img: np.ndarray, chroma: float = 1.0, luma: float = 0.8,
     return out
 
 
+def fill_mask(L: np.ndarray, lo: float = 10.0, hi: float = 22.0,
+              soft: float = 0.6) -> np.ndarray:
+    """1 = ровная заливка (шум давим), 0 = контур/мелкая деталь (не трогаем).
+
+    Важно: маска считается по АМПЛИТУДЕ мелкой структуры (|L - медиана 3×3|),
+    а не по градиенту. Градиент от самого шума и «съедал» заливку: шум делал
+    участок «контурным», и чистка его пропускала. Амплитуда шума ±3..8, у
+    настоящей линии/кромки — 20 и больше, поэтому порог их разделяет.
+    """
+    L8 = np.clip(L, 0, 255).astype(np.uint8)
+    hp = np.abs(L - cv2.medianBlur(L8, 3).astype(np.float32))
+    m = 1.0 - np.clip((hp - lo) / max(hi - lo, 1e-6), 0.0, 1.0)
+    return cv2.GaussianBlur(m, (0, 0), soft)
+
+
 def clean_preset(img: np.ndarray, preset: str = "strong") -> np.ndarray:
     """Чистка по пресету: хрома — медиана + сглаживание, яркость — guided
     по маске плоских зон в несколько проходов, затем лёгкий возврат резкости
@@ -116,38 +130,37 @@ def clean_preset(img: np.ndarray, preset: str = "strong") -> np.ndarray:
     lab = cv2.cvtColor(img, cv2.COLOR_BGR2LAB)
     L, A, B = [c.astype(np.float32) for c in cv2.split(lab)]
 
-    # --- 1. хрома
+    # --- 1. хрома: медиана + сглаживание (цветовые зоны не размазываются)
     A_med = cv2.medianBlur(np.clip(A, 0, 255).astype(np.uint8), p["cmed"]).astype(np.float32)
     B_med = cv2.medianBlur(np.clip(B, 0, 255).astype(np.uint8), p["cmed"]).astype(np.float32)
-    A_t = 0.45 * A_med + 0.55 * cv2.GaussianBlur(A, (0, 0), p["csig"])
-    B_t = 0.45 * B_med + 0.55 * cv2.GaussianBlur(B, (0, 0), p["csig"])
-    A = A + (A_t - A) * k
-    B = B + (B_t - B) * k
+    A = A + (0.45 * A_med + 0.55 * cv2.GaussianBlur(A, (0, 0), p["csig"]) - A) * k
+    B = B + (0.45 * B_med + 0.55 * cv2.GaussianBlur(B, (0, 0), p["csig"]) - B) * k
 
-    # --- 2. яркость: guided-фильтр только в плоских зонах, несколько проходов
+    # --- 2. яркость: раскраска только в заливках, края держим
+    #     bilateral убирает крапинки (малый пространственный радиус — тонкие
+    #     линии не разъезжаются), guided добивает остаток мягко.
     for _ in range(int(p["passes"])):
-        m = flat_mask(L, p["mthr"], 1)
-        L8 = np.clip(L, 0, 255).astype(np.uint8)
-        if hasattr(cv2, "ximgproc"):
-            L_g = cv2.ximgproc.guidedFilter(L8, L8, int(p["mrad"]),
-                                            float(p["meps"])).astype(np.float32)
-        else:
-            L_g = cv2.bilateralFilter(L, int(p["mrad"]), 22, 3.0)
-        L_m = cv2.medianBlur(L8, 3).astype(np.float32)
-        L_s = 0.35 * L_m + 0.65 * L_g
-        L = L + (L_s - L) * np.clip(m, 0.0, 1.0)
-
-    # --- 3. возврат резкости по контурам (узкая маска — без ореолов)
-    if p["unsharp"] > 0:
-        hp = L - cv2.GaussianBlur(L, (0, 0), 1.5)
-        em = np.clip((_edges(L) - 6.0) / 24.0, 0.0, 1.0)
-        L = L + hp * float(p["unsharp"]) * em
+        w = fill_mask(L, p["lo"], p["hi"])
+        Lb = cv2.bilateralFilter(L, int(p["d"]), float(p["sc"]), float(p["ss"]))
+        L = L + (Lb - L) * w
+        Lg = cv2.ximgproc.guidedFilter(L, L, int(p["grad"]), float(p["geps"])) \
+            if hasattr(cv2, "ximgproc") else cv2.bilateralFilter(L, 5, 12, 1.0)
+        L = L + (Lg - L) * w
 
     return cv2.cvtColor(np.clip(np.stack([L, A, B], -1), 0, 255).astype(np.uint8),
                         cv2.COLOR_LAB2BGR)
 
 
 # -------------------------------------------------------------------- metrics
+def fill_noise(img: np.ndarray) -> float:
+    """Робастная оценка шума ИМЕННО на заливках: сигма мелкой структуры
+    (|L − медиана 3×3|) по пикселям, где эта структура слабая."""
+    L = cv2.cvtColor(img, cv2.COLOR_BGR2LAB)[..., 0].astype(np.float32)
+    hp = np.abs(L - cv2.medianBlur(np.clip(L, 0, 255).astype(np.uint8), 3).astype(np.float32))
+    sel = hp < 12.0
+    return round(float(hp[sel].mean()), 2)
+
+
 def _ring(L: np.ndarray, edge: np.ndarray) -> float:
     near = cv2.dilate(edge.astype(np.uint8), np.ones((7, 7), np.uint8)).astype(bool) & ~edge
     return float(np.abs(L - cv2.GaussianBlur(L, (0, 0), 1.0))[near].mean())
@@ -169,6 +182,7 @@ def metrics(img: np.ndarray) -> dict:
         "цветной шум (a/b)": round(float((md(A)[flat].mean() + md(B)[flat].mean()) / 2), 2),
         "шум яркости": round(float(md(L)[flat].mean()), 2),
         "резкость контуров": round(float(lap[edge].mean()), 1),
+        "шум на заливках": fill_noise(img),
         "звон у контуров": round(_ring(L, edge), 2),
         "средняя яркость": round(float(L.mean()), 1),
     }
