@@ -58,10 +58,10 @@ def edge_band(L: np.ndarray, lo: float = 11.0, hi: float = 30.0) -> np.ndarray:
 PRESETS = {
     # detail — сколько исходной фактуры возвращается поверх чистки (0..1):
     # в ровных заливках возвращается мало, у деталей — больше.
-    "soft":     dict(hL=6.0, hC=4.0, t=7, s=15, soft=0.0, detail=0.95),
-    "normal":   dict(hL=10.0, hC=5.0, t=7, s=15, soft=0.0, detail=0.90),
-    "strong":   dict(hL=14.0, hC=6.0, t=7, s=15, soft=0.0, detail=0.80),
-    "max":      dict(hL=20.0, hC=8.0, t=9, s=21, soft=0.0, detail=0.60),
+    "soft":     dict(hL=8.0, hC=4.0, t=7, s=15, soft=0.0, detail=0.95),
+    "normal":   dict(hL=14.0, hC=5.0, t=7, s=15, soft=0.0, detail=0.90),
+    "strong":   dict(hL=20.0, hC=6.0, t=7, s=15, soft=0.0, detail=0.75),
+    "max":      dict(hL=28.0, hC=8.0, t=9, s=21, soft=0.0, detail=0.55),
     # частотный способ (альтернатива)
     "freq":     dict(T=(6.0, 4.0, 4.0), soft=0.0, detail=0.0),
 }
@@ -174,25 +174,42 @@ def _shrink(d: np.ndarray, T: float, soft: float = 2.0) -> np.ndarray:
 
 
 def restore_detail(src: np.ndarray, cleaned: np.ndarray,
-                   amount: float = 0.0) -> np.ndarray:
-    """Возврат части исходной фактуры поверх чистки.
+                   amount: float = 0.0, mid_thr: float = 1.0,
+                   mid_span: float = 4.0, flat_keep: float = 0.30,
+                   chroma: float = 0.45) -> np.ndarray:
+    """Возврат исходной фактуры поверх чистки, раздельно по масштабам.
 
-    Смешиваем не «всё подряд»: вес исходника растёт там, где есть мелкая
-    структура (там теряются детали), и почти нулевой в ровных заливках (там
-    возвращать нечего, кроме шума). Вес дополнительно сглажен, чтобы не
-    появилось границы между зонами."""
+    Картинка раскладывается на две полосы:
+      * средняя  `med` — то, что переживает медиану 3×3: пятна, мраморность,
+        мягкая штриховка. Именно она и есть «узор», который смывает NLM.
+      * тонкая   `src - med` — однопиксельная крупа и кромки.
+
+    Средняя полоса возвращается почти всегда (в ровной заливке `med` и так
+    совпадает с чисткой, так что шум не вернётся), тонкая — только там, где
+    есть средняя структура: на крапинке в пустой заливке `med` ровная, вес
+    нулевой, крупа остаётся вычищенной, а тонкая линия/контур возвращаются
+    целиком. Цвет возвращается слабее яркости — цветной шум заметнее всего.
+    """
     if amount <= 0:
         return cleaned
-    L = cv2.cvtColor(src, cv2.COLOR_BGR2LAB)[..., 0].astype(np.float32)
-    hp = np.abs(L - cv2.medianBlur(np.clip(L, 0, 255).astype(np.uint8), 3).astype(np.float32))
-    w = np.clip((hp - 6.0) / 18.0, 0.0, 1.0)
-    w = cv2.GaussianBlur(w, (0, 0), 1.2)
-    a_l = float(amount) * (0.30 + 0.70 * w)
-    # цветную фактуру возвращаем слабее: цветной шум — самая заметная грязь,
-    # а «детальность» рисуется почти целиком яркостью
-    alpha = np.stack([a_l, a_l * 0.35, a_l * 0.35], -1)
-    return np.clip(cleaned.astype(np.float32) + (src.astype(np.float32) - cleaned.astype(np.float32)) * alpha,
-                   0, 255).astype(np.uint8)
+    lab = cv2.cvtColor(src, cv2.COLOR_BGR2LAB).astype(np.float32)
+    clab = cv2.cvtColor(cleaned, cv2.COLOR_BGR2LAB).astype(np.float32)
+
+    def _med(ch: np.ndarray) -> np.ndarray:
+        return cv2.medianBlur(np.clip(ch, 0, 255).astype(np.uint8), 3).astype(np.float32)
+
+    med_l = _med(lab[..., 0])
+    mid = np.abs(med_l - cv2.GaussianBlur(med_l, (0, 0), 2.2))
+    w = np.clip((mid - mid_thr) / max(mid_span, 1e-3), 0.0, 1.0)
+    w = cv2.GaussianBlur(w, (0, 0), 1.5)
+    k = flat_keep + (1.0 - flat_keep) * w
+
+    out = clab.copy()
+    for i, f in ((0, 1.0), (1, chroma), (2, chroma)):
+        m = _med(lab[..., i])
+        out[..., i] = clab[..., i] + float(amount) * (
+            k * (m - clab[..., i]) + w * (lab[..., i] - m) * f)
+    return cv2.cvtColor(np.clip(out, 0, 255).astype(np.uint8), cv2.COLOR_LAB2BGR)
 
 
 def clean_fill(img: np.ndarray, preset: str = "normal") -> np.ndarray:
@@ -350,6 +367,8 @@ def main() -> int:
                     help="смягчение кромок 0..1 (0 — жёсткие)")
     ap.add_argument("--detail", type=float, default=None,
                     help="возврат исходной фактуры 0..1 (0 — только чистка)")
+    ap.add_argument("--hL", type=float, default=None,
+                    help="сила чистки яркости 1..40 (по умолчанию из пресета)")
     ap.add_argument("--chroma", type=float, default=1.0, help="сила чистки цвета 0..2")
     ap.add_argument("--luma", type=float, default=0.8, help="сила чистки яркости 0..2")
     ap.add_argument("--edge-thr", type=float, default=10.0)
@@ -363,7 +382,8 @@ def main() -> int:
         if img is None:
             raise SystemExit(f"не читается: {src}")
         if args.protect is not None or args.iters is not None \
-                or args.soft_edges is not None or args.detail is not None:
+                or args.soft_edges is not None or args.detail is not None \
+                or args.hL is not None:
             p = dict(PRESETS[args.preset])
             if args.protect is not None:
                 p["dil"] = args.protect
@@ -374,6 +394,8 @@ def main() -> int:
                 p["soft"] = args.soft_edges
             if args.detail is not None:
                 p["detail"] = args.detail
+            if args.hL is not None:
+                p["hL"] = args.hL
             PRESETS["_custom"] = p
             if "hL" in p or "T" in p:
                 res = clean_fill(img, "_custom")
