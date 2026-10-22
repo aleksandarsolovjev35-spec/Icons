@@ -75,7 +75,13 @@ def upscale(img: np.ndarray, size: int = 256, unsharp: float = 0.55,
 
 # --- рамка на готовом кадре -------------------------------------------------
 FRAME_RIM = 10      # толщина борта в пикселях ИТОГОВОГО кадра: одна на всех
+FRAME_GAP = 4       # зазор между бортом и рисунком: иконка целиком внутри рамки
 INSET_CROP = 2      # срезаем с края слота родную серо-белую линию листа
+
+
+def inner_size(size: int) -> int:
+    """Сторона квадрата, в который вписывается сама иконка (внутри рамки)."""
+    return size - 2 * (FRAME_RIM + FRAME_GAP)
 
 
 def frame_params(variant: str, size: int) -> dict:
@@ -98,14 +104,24 @@ def frame_params(variant: str, size: int) -> dict:
 
 
 def compose_frame(body: np.ndarray, size: int, fp: dict) -> np.ndarray:
-    """Вписать готовую иконку в кадр и нарисовать борт поверх краёв."""
+    """Рамка рисуется первой, иконка вставляется внутрь - её никто не перекрывает.
+
+    Слот занимает весь кадр, борт тянется от края внутрь на rim + inset,
+    внутренняя тень уходит ещё на deep. Рисунок кладём в квадрат со стороной
+    size - 2 * (FRAME_RIM + FRAME_GAP): он целиком внутри борта, не обрезается
+    и не затемняется - в зазоре между бортом и рисунком видна глубина слота.
+    """
     canvas = np.zeros((size, size, 3), np.uint8)
-    inner = size - 2 * FRAME_RIM
+    inner = inner_size(size)
+    # style_box тянет борт НАРУЖУ от переданного прямоугольника на rim px,
+    # поэтому прямоугольник ставим на FRAME_RIM внутрь: внешняя кромка борта
+    # ложится ровно на край кадра, без чёрной полосы снаружи
+    off = FRAME_RIM
+    S.style_box(canvas, (off, off, size - 1 - off, size - 1 - off), fp)
     if body.shape[0] != inner or body.shape[1] != inner:
         body = cv2.resize(body, (inner, inner), interpolation=cv2.INTER_AREA)
-    canvas[FRAME_RIM:FRAME_RIM + inner, FRAME_RIM:FRAME_RIM + inner] = body
-    S.style_box(canvas, (FRAME_RIM, FRAME_RIM,
-                         FRAME_RIM + inner - 1, FRAME_RIM + inner - 1), fp)
+    o = FRAME_RIM + FRAME_GAP      # зазор: в нём видна глубина слота
+    canvas[o:o + inner, o:o + inner] = body
     return canvas
 
 
@@ -125,12 +141,9 @@ def process_sheet(path: str, outroot: str, nslots: int | None,
     # потом рамка - на готовом кадре 256x256, в пикселях этого кадра.
     # Иначе чистка и супер-разрешение размывали борт, и его ширина гуляла
     # от иконки к иконке.
-    inner = size            # сторона иконки внутри рамки
+    inner = size if frame is None else inner_size(size)   # сторона самой иконки
     pad = INSET_CROP        # сколько срезать с края слота (родная линия рамки)
-    fp = None
-    if frame:
-        fp = frame_params(frame, size)
-        inner = size - 2 * FRAME_RIM
+    fp = frame_params(frame, size) if frame else None
 
     folder = os.path.relpath(os.path.dirname(path), ROOT)
     stem = os.path.splitext(os.path.basename(path))[0].replace(" ", "_")
