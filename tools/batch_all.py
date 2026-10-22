@@ -73,6 +73,42 @@ def upscale(img: np.ndarray, size: int = 256, unsharp: float = 0.55,
                         cv2.COLOR_LAB2BGR)
 
 
+# --- рамка на готовом кадре -------------------------------------------------
+FRAME_RIM = 10      # толщина борта в пикселях ИТОГОВОГО кадра: одна на всех
+INSET_CROP = 2      # срезаем с края слота родную серо-белую линию листа
+
+
+def frame_params(variant: str, size: int) -> dict:
+    """Параметры бортика, пересчитанные в пиксели итогового кадра.
+
+    style_frame.py мериет расстояния в пикселях того изображения, на котором
+    рисует. Эталон у него - борт 5.5 px, поэтому длины масштабируем так,
+    чтобы борт стал ровно FRAME_RIM px, независимо от размера кадра.
+    """
+    fp = S.params(variant, radius=0.0)
+    k = FRAME_RIM / fp["rim"]
+    for key in ("rim", "inset", "deep", "radius"):
+        fp[key] = max(0.0, float(fp[key]) * k)
+    fp["rim"] = float(FRAME_RIM)
+    # глубина внутренней тени при 256 px не должна залезать на рисунок:
+    # в эталоне она мерилась для слота ~145 px
+    fp["deep"] = min(fp["deep"], 9.0)
+    fp["radius"] = 0.0
+    return fp
+
+
+def compose_frame(body: np.ndarray, size: int, fp: dict) -> np.ndarray:
+    """Вписать готовую иконку в кадр и нарисовать борт поверх краёв."""
+    canvas = np.zeros((size, size, 3), np.uint8)
+    inner = size - 2 * FRAME_RIM
+    if body.shape[0] != inner or body.shape[1] != inner:
+        body = cv2.resize(body, (inner, inner), interpolation=cv2.INTER_AREA)
+    canvas[FRAME_RIM:FRAME_RIM + inner, FRAME_RIM:FRAME_RIM + inner] = body
+    S.style_box(canvas, (FRAME_RIM, FRAME_RIM,
+                         FRAME_RIM + inner - 1, FRAME_RIM + inner - 1), fp)
+    return canvas
+
+
 def process_sheet(path: str, outroot: str, nslots: int | None,
                   algo: str, size: int, frame: str | None = "sharp") -> dict:
     t0 = time.time()
@@ -85,17 +121,16 @@ def process_sheet(path: str, outroot: str, nslots: int | None,
         return {"sheet": path, "slots": 0, "error": "рамки не найдены"}
     mine = boxes if nslots is None else boxes[:nslots]
 
-    # рамка-бортик рисуется на листе ДО нарезки (как в cut_icons.py --style),
-    # поэтому в вырез она попадает вместе с иконкой
-    pad = 2
+    # Порядок важен: сначала иконка (вырез -> чистка -> апскейл), и только
+    # потом рамка - на готовом кадре 256x256, в пикселях этого кадра.
+    # Иначе чистка и супер-разрешение размывали борт, и его ширина гуляла
+    # от иконки к иконке.
+    inner = size            # сторона иконки внутри рамки
+    pad = INSET_CROP        # сколько срезать с края слота (родная линия рамки)
+    fp = None
     if frame:
-        fp = S.params(frame, radius=0.0)
-        img = img.copy()
-        for box in boxes:
-            S.style_box(img, box, fp)
-        # ровно до внешней кромки борта: рамка упирается в край кадра,
-        # иначе вокруг неё остаётся тёмная полоса фона листа
-        pad = int(np.ceil(fp["rim"]))
+        fp = frame_params(frame, size)
+        inner = size - 2 * FRAME_RIM
 
     folder = os.path.relpath(os.path.dirname(path), ROOT)
     stem = os.path.splitext(os.path.basename(path))[0].replace(" ", "_")
@@ -104,12 +139,14 @@ def process_sheet(path: str, outroot: str, nslots: int | None,
 
     made, noise_before, noise_after = 0, 0.0, 0.0
     for k, (x0, y0, x1, y1) in enumerate(mine):
-        crop = img[max(0, y0 - pad):min(H, y1 + 1 + pad),
-                   max(0, x0 - pad):min(W, x1 + 1 + pad)]
-        if crop.size == 0:
+        crop = img[max(0, y0 + pad):min(H, y1 + 1 - pad),
+                   max(0, x0 + pad):min(W, x1 + 1 - pad)]
+        if crop.shape[0] < 8 or crop.shape[1] < 8:
             continue
         clean = C.clean_fill(crop, "normal")
-        big = upscale(clean, size=size, algo=algo)
+        big = upscale(clean, size=inner, algo=algo)
+        if fp is not None:
+            big = compose_frame(big, size, fp)
         out = os.path.join(outdir, f"{stem}__slot{k:02d}.png")
         cv2.imwrite(out, big)
         noise_before += C.fill_noise(crop)
