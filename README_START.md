@@ -71,6 +71,20 @@ python3 tools/run_all.py
   ```
   $p="$PWD\run_all.bat"; $c=Get-Content $p -Raw; [IO.File]::WriteAllText($p, ($c -replace "`r?`n","`r`n"))
   ```
+- **В консоли «кракозябры» или падение `UnicodeEncodeError`** — было из-за
+  рассинхрона кодировок. Вывод Python-скрипта идёт либо в консоль (cmd.exe,
+  cp866), либо в **пайп** — когда `tools/run_all.py` запускает
+  `tools/batch_all.py` и читает его вывод; для пайпа Python берёт cp1251, а
+  символа `->` (U+2192) в cp1251 нет — отсюда `UnicodeEncodeError` на шаге 3/5.
+  Исправлено: `tools/_console.py` в настоящей консоли переключает её на UTF-8
+  (`SetConsoleOutputCP(65001)`) и выводит utf-8; в пайпе кодировку не трогает
+  (дочерние процессы пишут utf-8 через `child_env()`), но включает
+  `errors="replace"` — уронить прогон не может никакой символ.
+
+  **Важно:** если ошибка всё ещё видна — значит, у тебя старая копия файлов.
+  Проверь, что `tools/_console.py` существует, а в `tools/batch_all.py` есть
+  строка `setup()` в начале `main()`. Обнови репозиторий (`git pull`), либо
+  скачай ZIP заново.
 - **`--smooth` не качает EDSR** — скачай `EDSR_x4.pb`
   (<https://github.com/Saafke/EDSR_Tensorflow/tree/master/models>)
   и положи в `tools/models/`.

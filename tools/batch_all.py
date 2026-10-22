@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 """
-batch_all.py — прогнать всю коллекцию: нарезка → чистка → апскейл 256.
+batch_all.py — прогнать всю коллекцию: нарезка -> чистка -> апскейл 256.
 
 Для каждого листа (`<папка>/<файл>.jpg`):
-  detect_frames → все рамки → вырез 1:1 с обводкой →
-  clean_fill('normal') → супер-разрешение до 256×256 (FSRCNN ×4 + unsharp).
+  detect_frames -> все рамки -> вырез 1:1 с обводкой ->
+  clean_fill('normal') -> супер-разрешение до 256x256 (FSRCNN x4 + unsharp).
 
 Файлы кладутся в `icons_256/<папка>/<файл>__slotNN.png` (11 300 PNG).
 Папку можно переименовать ключом `--out`.
@@ -35,6 +35,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
 sys.path.insert(0, HERE)
 
+from _console import setup as _console_setup  # noqa: E402
 import clean_icon as C            # noqa: E402
 import detect_frames as D         # noqa: E402
 import fetch_models               # noqa: E402
@@ -110,6 +111,7 @@ def process_sheet(path: str, outroot: str, nslots: int | None,
 
 
 def main() -> int:
+    _console_setup()
     ap = argparse.ArgumentParser(description="Пакетный прогон коллекции")
     ap.add_argument("--out", default=os.path.join(ROOT, "icons_256"),
                     help="куда класть результат (по умолчанию icons_256/ в репозитории)")
@@ -130,7 +132,7 @@ def main() -> int:
     algo = "edsr" if args.smooth else "fsrcnn"
     fetch_models.ensure(all_models=args.smooth)      # модели качаются один раз
     print(f"листов: {len(sheets)} | слотов с листа: {args.slots or 'все'} | "
-          f"модель: {algo.upper()} | → {args.out}")
+          f"модель: {algo.upper()} | -> {args.out}")
 
     rows = []
     t0 = time.time()
@@ -162,7 +164,7 @@ def main() -> int:
 
     total = sum(r.get("slots", 0) for r in rows)
     print(f"\nготово: {total} иконок с {len(rows)} листов за "
-          f"{(time.time() - t0) / 60:.1f} мин → {args.out}")
+          f"{(time.time() - t0) / 60:.1f} мин -> {args.out}")
     print(f"отчёт: {csv_path}")
     return 0
 
