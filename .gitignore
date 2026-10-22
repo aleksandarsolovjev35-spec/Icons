@@ -1,0 +1,14 @@
+# результаты генерации — собираются скриптами в tools/, в git не нужны
+annotated/
+styled/
+styled_full/
+styled_soft/
+styled_deep/
+styled_inset/
+cutouts/
+cutouts_styled/
+__pycache__/
+annotated/frames.csv
+annotated/frames.json
+tools/models/
+out/
