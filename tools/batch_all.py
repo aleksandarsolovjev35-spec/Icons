@@ -3,11 +3,12 @@
 batch_all.py — прогнать всю коллекцию: нарезка -> чистка -> апскейл 256.
 
 Для каждого листа (`<папка>/<файл>.jpg`):
-  detect_frames -> все рамки -> чёрная рамка-бортик (style_frame, --frame) ->
-  вырез 1:1 с обводкой -> clean_fill('normal') ->
-  супер-разрешение до 256x256 (FSRCNN x4 + unsharp).
+  detect_frames -> все рамки -> вырез 1:1 с обводкой -> clean_fill('normal')
+  -> (по желанию) рамка-бортик поверх готового кадра.
 
-Файлы кладутся в `icons_256/<папка>/<файл>__slotNN.png` (11 300 PNG).
+По умолчанию НИЧЕГО не увеличивается: иконка отдаётся в родном размере,
+пиксель в пиксель. Апскейл включается только явно: --size 256.
+Файлы кладутся в `icons_cut/<папка>/<файл>__slotNN.png`.
 Папку можно переименовать ключом `--out`.
 
 В `samples/` пишется то, что нужно глазам:
@@ -126,7 +127,7 @@ def compose_frame(body: np.ndarray, size: int, fp: dict) -> np.ndarray:
 
 
 def process_sheet(path: str, outroot: str, nslots: int | None,
-                  algo: str, size: int, frame: str | None = "sharp") -> dict:
+                  algo: str, size: int, frame: str | None = None) -> dict:
     t0 = time.time()
     img = cv2.imread(path)
     if img is None:
@@ -138,9 +139,9 @@ def process_sheet(path: str, outroot: str, nslots: int | None,
     mine = boxes if nslots is None else boxes[:nslots]
 
     # Порядок важен: сначала иконка (вырез -> чистка -> апскейл), и только
-    # потом рамка - на готовом кадре 256x256, в пикселях этого кадра.
+    # потом рамка - на готовом кадре, в пикселях этого кадра.
     # Иначе чистка и супер-разрешение размывали борт, и его ширина гуляла
-    # от иконки к иконке.
+    # от иконки к иконке.  size <= 0 -> без апскейла вообще (родной размер).
     inner = size if frame is None else inner_size(size)   # сторона самой иконки
     pad = INSET_CROP        # сколько срезать с края слота (родная линия рамки)
     fp = frame_params(frame, size) if frame else None
@@ -157,7 +158,15 @@ def process_sheet(path: str, outroot: str, nslots: int | None,
         if crop.shape[0] < 8 or crop.shape[1] < 8:
             continue
         clean = C.clean_fill(crop, "normal")
-        big = upscale(clean, size=inner, algo=algo)
+        if size > 0:                       # апскейл только если он запрошен
+            big = upscale(clean, size=inner, algo=algo)
+        else:
+            # пиксель в пиксель, без размытия; разница в 1 px по сторонам
+            # от детектора -> аккуратный квадрат по центру
+            h, w = clean.shape[:2]
+            d = min(h, w)
+            big = clean[(h - d) // 2:(h - d) // 2 + d,
+                        (w - d) // 2:(w - d) // 2 + d]
         if fp is not None:
             big = compose_frame(big, size, fp)
         out = os.path.join(outdir, f"{stem}__slot{k:02d}.png")
@@ -177,21 +186,25 @@ def process_sheet(path: str, outroot: str, nslots: int | None,
 def main() -> int:
     _console_setup()
     ap = argparse.ArgumentParser(description="Пакетный прогон коллекции")
-    ap.add_argument("--out", default=os.path.join(ROOT, "icons_256"),
-                    help="куда класть результат (по умолчанию icons_256/ в репозитории)")
+    ap.add_argument("--out", default=os.path.join(ROOT, "icons_cut"),
+                    help="куда класть результат (по умолчанию icons_cut/ в репозитории)")
     ap.add_argument("--slots", type=int, default=None,
                     help="сколько иконок с листа (по умолчанию все)")
     ap.add_argument("--limit", type=int, default=None, help="только первые N листов")
-    ap.add_argument("--size", type=int, default=256)
+    ap.add_argument("--size", type=int, default=0,
+                    help="сторона кадра; 0 (по умолчанию) - без апскейла, "
+                         "родной размер иконки")
     ap.add_argument("--smooth", action="store_true",
                     help="EDSR (качественнее, ~9 c на иконку) вместо FSRCNN")
-    ap.add_argument("--frame", default="sharp",
+    ap.add_argument("--frame", default="none",
                     choices=["none"] + sorted(S.VARIANTS),
-                    help="рамка-бортик вокруг иконки (по умолчанию sharp: "
-                         "чёрная, прямые углы, свет сверху-слева); none - без рамки")
+                    help="рамка-бортик вокруг иконки; по умолчанию none - без рамки. "
+                         "Рамка требует --size (рисуется в пикселях кадра)")
     ap.add_argument("--jobs", type=int, default=2)
     args = ap.parse_args()
     frame = None if args.frame == "none" else args.frame
+    if frame and args.size <= 0:          # рамке нужен кадр известного размера
+        args.size = 256
 
     cv2.setNumThreads(1)
     sheets = sorted(p for p in glob.glob(os.path.join(ROOT, "*", "*.jpg"))
@@ -200,8 +213,9 @@ def main() -> int:
         sheets = sheets[:args.limit]
     algo = "edsr" if args.smooth else "fsrcnn"
     fetch_models.ensure(all_models=args.smooth)      # модели качаются один раз
+    scale_txt = f"{args.size}x{args.size}" if args.size > 0 else "1:1 без апскейла"
     print(f"листов: {len(sheets)} | слотов с листа: {args.slots or 'все'} | "
-          f"модель: {algo.upper()} | рамка: {args.frame} | -> {args.out}")
+          f"размер: {scale_txt} | рамка: {args.frame} | -> {args.out}")
 
     rows = []
     t0 = time.time()
