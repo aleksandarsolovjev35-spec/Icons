@@ -10,5 +10,10 @@ cutouts_styled/
 __pycache__/
 annotated/frames.csv
 annotated/frames.json
-tools/models/
+tools/models/*
+!tools/models/FSRCNN_x4.pb
 out/
+
+# результаты прогона (генерируются run_all.bat / run_all.sh)
+icons_256/
+.venv/
