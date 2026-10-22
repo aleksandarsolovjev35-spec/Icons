@@ -102,6 +102,10 @@ def main() -> int:
     ap.add_argument("--limit", type=int, default=None, help="первые N листов")
     ap.add_argument("--out", default=os.path.join(ROOT, "icons_256"))
     ap.add_argument("--smooth", action="store_true", help="EDSR вместо FSRCNN")
+    ap.add_argument("--frame", default="sharp",
+                    help="рамка-бортик: sharp (по умолчанию), deep, inset, soft, none")
+    ap.add_argument("--no-frame", action="store_true",
+                    help="без рамки (то же, что --frame none)")
     ap.add_argument("--jobs", type=int, default=2)
     ap.add_argument("--open", action="store_true", help="открыть папку в конце")
     args = ap.parse_args()
@@ -110,8 +114,9 @@ def main() -> int:
     log(f"папка: {ROOT}")
     check_env()
 
+    frame = "none" if args.no_frame else args.frame
     base = [sys.executable, os.path.join(HERE, "batch_all.py"),
-            "--out", args.out, "--jobs", str(args.jobs)]
+            "--out", args.out, "--jobs", str(args.jobs), "--frame", frame]
     if args.slots:
         base += ["--slots", str(args.slots)]
     if args.limit:
