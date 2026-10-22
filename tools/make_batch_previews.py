@@ -2,12 +2,12 @@
 """
 make_batch_previews.py — превью для пакетного прогона.
 
-Читает `out/upscaled/**/*.png` (результат tools/batch_all.py) и собирает в
+Читает `icons_256/**/*.png` (результат tools/batch_all.py) и собирает в
 `samples/`:
 
   batch_contact_sheet.jpg  — сетка по одной иконке с каждого листа
   batch_montage.jpg        — 12 иконок из разных папок крупно (×2)
-  batch_grid_<папка>.jpg   — полная сетка иконок одной папки (по 5 листов)
+  batch_grid_<папка>.jpg   — полная сетка иконок одной папки (--per-folder N)
 
     python3 tools/make_batch_previews.py
     python3 tools/make_batch_previews.py --per-folder 5
@@ -23,7 +23,7 @@ import numpy as np
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
-SRC = os.path.join(ROOT, "out", "upscaled")
+SRC = os.path.join(ROOT, "icons_256")
 OUT = os.path.join(ROOT, "samples")
 
 
@@ -54,13 +54,15 @@ def _grid(tiles: list[np.ndarray], cols: int, gap: int = 4,
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--tile", type=int, default=96, help="размер миниатюры")
+    ap.add_argument("--src", default=SRC, help="папка с результатами")
     ap.add_argument("--per-folder", type=int, default=0,
                     help="ширины сеток по папкам (0 — не делать)")
     args = ap.parse_args()
 
-    files = sorted(glob.glob(os.path.join(SRC, "*", "*.png")))
+    src = args.src
+    files = sorted(glob.glob(os.path.join(src, "*", "*.png")))
     if not files:
-        print("нет файлов в", SRC)
+        print("нет файлов в", src)
         return 1
     print("иконок:", len(files))
 

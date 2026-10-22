@@ -6,8 +6,8 @@ batch_all.py — прогнать всю коллекцию: нарезка → 
   detect_frames → все рамки → вырез 1:1 с обводкой →
   clean_fill('normal') → супер-разрешение до 256×256 (FSRCNN ×4 + unsharp).
 
-Файлы кладутся в `out/upscaled/<папка>/<файл>__slotNN.png`
-(`out/` в .gitignore: 12 тыс. файлов в git не нужны).
+Файлы кладутся в `icons_256/<папка>/<файл>__slotNN.png` (11 300 PNG).
+Папку можно переименовать ключом `--out`.
 
 В `samples/` пишется то, что нужно глазам:
   batch_summary.csv        — по листам: сколько иконок, шум до/после, время
@@ -37,6 +37,7 @@ sys.path.insert(0, HERE)
 
 import clean_icon as C            # noqa: E402
 import detect_frames as D         # noqa: E402
+import fetch_models               # noqa: E402
 
 MODELS = os.path.join(HERE, "models")
 SR = {}
@@ -110,7 +111,8 @@ def process_sheet(path: str, outroot: str, nslots: int | None,
 
 def main() -> int:
     ap = argparse.ArgumentParser(description="Пакетный прогон коллекции")
-    ap.add_argument("--out", default=os.path.join(ROOT, "out", "upscaled"))
+    ap.add_argument("--out", default=os.path.join(ROOT, "icons_256"),
+                    help="куда класть результат (по умолчанию icons_256/ в репозитории)")
     ap.add_argument("--slots", type=int, default=None,
                     help="сколько иконок с листа (по умолчанию все)")
     ap.add_argument("--limit", type=int, default=None, help="только первые N листов")
@@ -126,6 +128,7 @@ def main() -> int:
     if args.limit:
         sheets = sheets[:args.limit]
     algo = "edsr" if args.smooth else "fsrcnn"
+    fetch_models.ensure(all_models=args.smooth)      # модели качаются один раз
     print(f"листов: {len(sheets)} | слотов с листа: {args.slots or 'все'} | "
           f"модель: {algo.upper()} | → {args.out}")
 
