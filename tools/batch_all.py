@@ -3,8 +3,9 @@
 batch_all.py — прогнать всю коллекцию: нарезка -> чистка -> апскейл 256.
 
 Для каждого листа (`<папка>/<файл>.jpg`):
-  detect_frames -> все рамки -> вырез 1:1 с обводкой ->
-  clean_fill('normal') -> супер-разрешение до 256x256 (FSRCNN x4 + unsharp).
+  detect_frames -> все рамки -> чёрная рамка-бортик (style_frame, --frame) ->
+  вырез 1:1 с обводкой -> clean_fill('normal') ->
+  супер-разрешение до 256x256 (FSRCNN x4 + unsharp).
 
 Файлы кладутся в `icons_256/<папка>/<файл>__slotNN.png` (11 300 PNG).
 Папку можно переименовать ключом `--out`.
@@ -39,6 +40,7 @@ from _console import setup as _console_setup  # noqa: E402
 import clean_icon as C            # noqa: E402
 import detect_frames as D         # noqa: E402
 import fetch_models               # noqa: E402
+import style_frame as S           # noqa: E402
 
 MODELS = os.path.join(HERE, "models")
 SR = {}
@@ -72,7 +74,7 @@ def upscale(img: np.ndarray, size: int = 256, unsharp: float = 0.55,
 
 
 def process_sheet(path: str, outroot: str, nslots: int | None,
-                  algo: str, size: int) -> dict:
+                  algo: str, size: int, frame: str | None = "sharp") -> dict:
     t0 = time.time()
     img = cv2.imread(path)
     if img is None:
@@ -83,6 +85,16 @@ def process_sheet(path: str, outroot: str, nslots: int | None,
         return {"sheet": path, "slots": 0, "error": "рамки не найдены"}
     mine = boxes if nslots is None else boxes[:nslots]
 
+    # рамка-бортик рисуется на листе ДО нарезки (как в cut_icons.py --style),
+    # поэтому в вырез она попадает вместе с иконкой
+    pad = 2
+    if frame:
+        fp = S.params(frame, radius=0.0)
+        img = img.copy()
+        for box in boxes:
+            S.style_box(img, box, fp)
+        pad = int(2 + fp["rim"] + 3)          # + запас под падающую тень
+
     folder = os.path.relpath(os.path.dirname(path), ROOT)
     stem = os.path.splitext(os.path.basename(path))[0].replace(" ", "_")
     outdir = os.path.join(outroot, folder)
@@ -90,8 +102,8 @@ def process_sheet(path: str, outroot: str, nslots: int | None,
 
     made, noise_before, noise_after = 0, 0.0, 0.0
     for k, (x0, y0, x1, y1) in enumerate(mine):
-        crop = img[max(0, y0 - 2):min(H, y1 + 3),
-                   max(0, x0 - 2):min(W, x1 + 3)]
+        crop = img[max(0, y0 - pad):min(H, y1 + 1 + pad),
+                   max(0, x0 - pad):min(W, x1 + 1 + pad)]
         if crop.size == 0:
             continue
         clean = C.clean_fill(crop, "normal")
@@ -121,8 +133,13 @@ def main() -> int:
     ap.add_argument("--size", type=int, default=256)
     ap.add_argument("--smooth", action="store_true",
                     help="EDSR (качественнее, ~9 c на иконку) вместо FSRCNN")
+    ap.add_argument("--frame", default="sharp",
+                    choices=["none"] + sorted(S.VARIANTS),
+                    help="рамка-бортик вокруг иконки (по умолчанию sharp: "
+                         "чёрная, прямые углы, свет сверху-слева); none - без рамки")
     ap.add_argument("--jobs", type=int, default=2)
     args = ap.parse_args()
+    frame = None if args.frame == "none" else args.frame
 
     cv2.setNumThreads(1)
     sheets = sorted(p for p in glob.glob(os.path.join(ROOT, "*", "*.jpg"))
@@ -132,7 +149,7 @@ def main() -> int:
     algo = "edsr" if args.smooth else "fsrcnn"
     fetch_models.ensure(all_models=args.smooth)      # модели качаются один раз
     print(f"листов: {len(sheets)} | слотов с листа: {args.slots or 'все'} | "
-          f"модель: {algo.upper()} | -> {args.out}")
+          f"модель: {algo.upper()} | рамка: {args.frame} | -> {args.out}")
 
     rows = []
     t0 = time.time()
@@ -140,14 +157,14 @@ def main() -> int:
         from multiprocessing import Pool
         with Pool(args.jobs) as pool:
             for res in pool.imap_unordered(
-                    _worker, [(p, args.out, args.slots, algo, args.size)
+                    _worker, [(p, args.out, args.slots, algo, args.size, frame)
                               for p in sheets]):
                 rows.append(res)
                 print(f"  [{len(rows)}/{len(sheets)}] {res['sheet']}  "
                       f"{res.get('slots', 0)} шт  {res.get('sec', 0)} c")
     else:
         for p in sheets:
-            res = process_sheet(p, args.out, args.slots, algo, args.size)
+            res = process_sheet(p, args.out, args.slots, algo, args.size, frame)
             rows.append(res)
             print(f"  [{len(rows)}/{len(sheets)}] {res['sheet']}  "
                   f"{res.get('slots', 0)} шт  {res.get('sec', 0)} c")
@@ -170,9 +187,9 @@ def main() -> int:
 
 
 def _worker(a):
-    p, out, n, algo, size = a
+    p, out, n, algo, size, frame = a
     try:
-        return process_sheet(p, out, n, algo, size)
+        return process_sheet(p, out, n, algo, size, frame)
     except Exception as e:                      # noqa: BLE001
         return {"sheet": os.path.relpath(p, ROOT), "slots": 0,
                 "error": str(e)[:120]}
