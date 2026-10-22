@@ -49,11 +49,28 @@ python3 tools/run_all.py
 Превью после прогона: `samples/batch_contact_sheet.jpg`,
 `samples/batch_montage.jpg`, отчёт — `samples/batch_summary.csv`.
 
+## Окно и прогресс
+
+Батник печатает весь прогресс (шаги 1/5…5/5, по строке на каждый лист) и в
+конце **сам делает паузу** — «Press any key to close this window». Окно можно
+свернуть, работа продолжится.
+
+Весь вывод параллельно пишется в **`run_log.txt`** в корне: если окно всё же
+закрылось, открой этот файл — там будет видно, на каком шаге остановилось.
+
 ## Если что-то пошло не так
 
 - **«Python не найден»** — поставь Python 3.10+ и включи «Add Python to PATH».
 - **Ошибка `dnn_superres`** — батник сам переустановит contrib-сборку opencv;
   вручную: `pip install --force-reinstall opencv-contrib-python-headless`.
+- **Окно открылось и сразу закрылось** — раньше так и было: файл лежал в
+  репозитории с Unix-переводами строк, а `cmd.exe` такой батник не дочитывает.
+  Исправлено: `run_all.bat` хранится с CRLF, за это отвечает `.gitattributes`.
+  Если у тебя старая копия — обнови репозиторий (`git pull`), либо почини файл
+  в PowerShell:
+  ```
+  $p="$PWD\run_all.bat"; $c=Get-Content $p -Raw; [IO.File]::WriteAllText($p, ($c -replace "`r?`n","`r`n"))
+  ```
 - **`--smooth` не качает EDSR** — скачай `EDSR_x4.pb`
   (<https://github.com/Saafke/EDSR_Tensorflow/tree/master/models>)
   и положи в `tools/models/`.

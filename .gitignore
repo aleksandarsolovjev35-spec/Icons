@@ -16,4 +16,5 @@ out/
 
 # результаты прогона (генерируются run_all.bat / run_all.sh)
 icons_256/
+run_log.txt
 .venv/

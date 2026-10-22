@@ -1,74 +1,85 @@
 @echo off
-chcp 65001 >nul
-setlocal EnableDelayedExpansion
+setlocal EnableExtensions
 cd /d "%~dp0"
+title Icons pipeline - cut, clean, upscale 256
 
 echo ==================================================================
-echo   Иконки: нарезка - чистка - апскейл 256
+echo   Icons: cut -^> clean -^> upscale 256
 echo ==================================================================
 echo.
 
-rem --- ищем Python -------------------------------------------------
+if not exist "tools\run_all.py" (
+    echo [ERROR] tools\run_all.py not found.
+    echo Run this file from the repository root folder.
+    echo.
+    pause
+    exit /b 1
+)
+
+rem ---------- find Python -------------------------------------------
 set "PY="
-where py >nul 2>nul && set "PY=py -3"
+py -3 --version >nul 2>nul && set "PY=py -3"
 if not defined PY (
-    where python >nul 2>nul && set "PY=python"
+    python --version >nul 2>nul && set "PY=python"
 )
 if not defined PY (
-    echo [ОШИБКА] Python не найден.
-    echo Поставь Python 3.10+ с https://www.python.org/downloads/
-    echo При установке обязательно отметь галочку "Add Python to PATH".
+    echo [ERROR] Python not found.
+    echo Install Python 3.10+ from https://www.python.org/downloads/
+    echo During setup enable "Add python.exe to PATH".
     echo.
     pause
     exit /b 1
 )
 echo Python: %PY%
 %PY% --version
+echo.
 
-rem --- виртуальное окружение --------------------------------------
+rem ---------- virtual environment -----------------------------------
 if not exist ".venv\Scripts\python.exe" (
-    echo.
-    echo Создаю окружение .venv ...
+    echo Creating .venv ...
     %PY% -m venv .venv
     if errorlevel 1 (
-        echo [ОШИБКА] не удалось создать .venv
+        echo [ERROR] could not create .venv
+        echo.
         pause
         exit /b 1
     )
 )
 set "VPY=.venv\Scripts\python.exe"
 
-rem --- зависимости ------------------------------------------------
+rem ---------- dependencies ------------------------------------------
 "%VPY%" -c "import cv2, numpy" >nul 2>nul
 if errorlevel 1 (
-    echo.
-    echo Ставлю зависимости numpy и opencv-contrib ...
+    echo Installing numpy and opencv-contrib ...
     "%VPY%" -m pip install --upgrade pip --quiet
     "%VPY%" -m pip install -r requirements.txt
     if errorlevel 1 (
-        echo [ОШИБКА] не удалось поставить зависимости
+        echo [ERROR] could not install dependencies
+        echo.
         pause
         exit /b 1
     )
 )
 
-rem --- запуск -----------------------------------------------------
 "%VPY%" -c "import cv2; assert hasattr(cv2,'dnn_superres')" >nul 2>nul
 if errorlevel 1 (
-    echo Ставлю contrib-сборку opencv с нуля ...
+    echo Reinstalling opencv contrib build ...
     "%VPY%" -m pip install --force-reinstall opencv-contrib-python-headless
 )
 
+rem ---------- run ---------------------------------------------------
 echo.
 "%VPY%" tools\run_all.py --open %*
 set "RC=%ERRORLEVEL%"
 
 echo.
 if "%RC%"=="0" (
-    echo Готово. Результат в папке icons_256
+    echo Done. Icons are in the "icons_256" folder.
 ) else (
-    echo Скрипт завершился с ошибкой, код %RC%
+    echo Failed with exit code %RC%.
+    echo See the messages above.
 )
 echo.
-pause
+echo Press any key to close this window.
+pause >nul
 exit /b %RC%

@@ -27,42 +27,69 @@ import time
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
+LOG_PATH = os.path.join(ROOT, "run_log.txt")
+_LOG = None
+
+
+def _open_log() -> None:
+    """Дублируем вывод в run_log.txt: если окно всё же закроется, будет что читать."""
+    global _LOG
+    try:
+        _LOG = open(LOG_PATH, "w", encoding="utf-8", buffering=1)
+        _LOG.write(f"run_all.py  Python {sys.version.split()[0]}\n")
+    except OSError:
+        _LOG = None
+
+
+def log(line: str = "") -> None:
+    print(line, flush=True)
+    if _LOG:
+        _LOG.write(line + "\n")
 
 
 def head(t: str) -> None:
-    print("\n" + "=" * 66)
-    print(t)
-    print("=" * 66)
+    log()
+    log("=" * 66)
+    log(t)
+    log("=" * 66)
 
 
 def check_env() -> None:
     head("1/5  Проверка окружения")
-    print(f"  Python {sys.version.split()[0]}")
+    log(f"  Python {sys.version.split()[0]}")
     if sys.version_info < (3, 9):
         sys.exit("  ОШИБКА: нужен Python 3.9 или новее")
     try:
         import numpy as np
         import cv2
     except ImportError as e:
-        print(f"  ОШИБКА: {e}")
-        print("  Установи зависимости: pip install -r requirements.txt")
+        log(f"  ОШИБКА: {e}")
+        log("  Установи зависимости: pip install -r requirements.txt")
         sys.exit(1)
-    print(f"  numpy {np.__version__}, opencv {cv2.__version__}")
+    log(f"  numpy {np.__version__}, opencv {cv2.__version__}")
     if not hasattr(cv2, "dnn_superres"):
-        print("  ОШИБКА: в opencv нет dnn_superres.")
-        print("  Нужен именно contrib-пакет:")
-        print("    pip install --force-reinstall opencv-contrib-python-headless")
+        log("  ОШИБКА: в opencv нет dnn_superres.")
+        log("  Нужен именно contrib-пакет:")
+        log("    pip install --force-reinstall opencv-contrib-python-headless")
         sys.exit(1)
-    print("  dnn_superres: есть")
+    log("  dnn_superres: есть")
 
 
 def run(cmd: list[str], title: str) -> None:
+    """Запускает шаг, показывая его вывод живьём и дублируя в лог."""
     head(title)
     t = time.time()
-    r = subprocess.run(cmd, cwd=ROOT)
-    if r.returncode != 0:
-        sys.exit(f"  ОШИБКА: команда завершилась с кодом {r.returncode}")
-    print(f"  готово за {time.time() - t:.1f} c")
+    proc = subprocess.Popen(cmd, cwd=ROOT, stdout=subprocess.PIPE,
+                            stderr=subprocess.STDOUT, text=True,
+                            encoding="utf-8", errors="replace", bufsize=1)
+    assert proc.stdout is not None
+    for line in proc.stdout:
+        log(line.rstrip("\n"))
+    rc = proc.wait()
+    if rc != 0:
+        log(f"  ОШИБКА: шаг завершился с кодом {rc}")
+        raise SystemExit(1)
+    log(f"  готово за {time.time() - t:.1f} c")
 
 
 def main() -> int:
@@ -75,6 +102,8 @@ def main() -> int:
     ap.add_argument("--open", action="store_true", help="открыть папку в конце")
     args = ap.parse_args()
 
+    _open_log()
+    log(f"папка: {ROOT}")
     check_env()
 
     base = [sys.executable, os.path.join(HERE, "batch_all.py"),
@@ -96,12 +125,13 @@ def main() -> int:
     head("5/5  Готово")
     files = glob.glob(os.path.join(args.out, "*", "*.png"))
     size = sum(os.path.getsize(f) for f in files) / 1e6
-    print(f"  иконок: {len(files)}")
-    print(f"  папка:  {args.out}")
-    print(f"  размер: {size:.0f} МБ")
-    print("\n  превью: samples/batch_contact_sheet.jpg")
-    print("          samples/batch_montage.jpg")
-    print("  отчёт:  samples/batch_summary.csv")
+    log(f"  иконок: {len(files)}")
+    log(f"  папка:  {args.out}")
+    log(f"  размер: {size:.0f} МБ")
+    log("  превью: samples/batch_contact_sheet.jpg")
+    log("          samples/batch_montage.jpg")
+    log("  отчёт:  samples/batch_summary.csv")
+    log(f"  лог:    {LOG_PATH}")
 
     if args.open:
         try:
