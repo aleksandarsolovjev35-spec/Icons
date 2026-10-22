@@ -35,6 +35,9 @@ import urllib.request
 import cv2
 import numpy as np
 
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from _console import setup as _console_setup  # noqa: E402
+
 MODEL_URL = ("https://raw.githubusercontent.com/Saafke/EDSR_Tensorflow/"
              "master/models/EDSR_x4.pb")
 MODEL_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)),
@@ -85,6 +88,7 @@ def upscale(img: np.ndarray, size: int = 256, sharp: float = 0.4,
 
 
 def main() -> int:
+    _console_setup()
     ap = argparse.ArgumentParser(description="Апскейл иконки до 256×256")
     ap.add_argument("images", nargs="+")
     ap.add_argument("-o", "--out", default=None, help="выход (для одного файла)")

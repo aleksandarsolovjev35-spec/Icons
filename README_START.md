@@ -71,6 +71,11 @@ python3 tools/run_all.py
   ```
   $p="$PWD\run_all.bat"; $c=Get-Content $p -Raw; [IO.File]::WriteAllText($p, ($c -replace "`r?`n","`r`n"))
   ```
+- **В консоли «кракозябры» или падение `UnicodeEncodeError`** — было из-за
+  рассинхрона кодировок: cmd.exe работает в cp866, а Python брал cp1251, и
+  символ `->` (U+2192) в cp1251 отсутствует. Исправлено: `tools/_console.py`
+  спрашивает у системы реальную кодовую страницу консоли и переключает вывод
+  на неё, а непереводимые символы заменяет на `?` вместо падения.
 - **`--smooth` не качает EDSR** — скачай `EDSR_x4.pb`
   (<https://github.com/Saafke/EDSR_Tensorflow/tree/master/models>)
   и положи в `tools/models/`.

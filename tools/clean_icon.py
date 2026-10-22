@@ -25,9 +25,13 @@ from __future__ import annotations
 
 import argparse
 import os
+import sys
 
 import cv2
 import numpy as np
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from _console import setup as _console_setup  # noqa: E402
 
 
 # --------------------------------------------------------------------- masks
@@ -387,6 +391,7 @@ def metrics(img: np.ndarray) -> dict:
 
 
 def main() -> int:
+    _console_setup()
     ap = argparse.ArgumentParser(description="Чистка иконок от JPEG-шума")
     ap.add_argument("images", nargs="+")
     ap.add_argument("-o", "--out", default=None)

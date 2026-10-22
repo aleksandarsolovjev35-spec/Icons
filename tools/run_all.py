@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-run_all.py — «нажал и всё сделалось»: вся коллекция → 11 300 иконок 256×256.
+run_all.py — "нажал и всё сделалось": вся коллекция -> 11 300 иконок 256x256.
 
 Обычно запускается двойным кликом по run_all.bat (Windows) или
 `./run_all.sh` (macOS/Linux). Но и напрямую работает:
@@ -12,7 +12,7 @@ run_all.py — «нажал и всё сделалось»: вся коллек�
 Шаги:
   1. проверка окружения (Python 3.9+, numpy, opencv с dnn_superres);
   2. скачивание моделей в tools/models/ (в git их нет);
-  3. нарезка → чистка → апскейл 256 для всех листов (tools/batch_all.py);
+  3. нарезка -> чистка -> апскейл 256 для всех листов (tools/batch_all.py);
   4. превью и отчёт в samples/ (tools/make_batch_previews.py);
   5. итоговая сводка в консоли + открыть папку с результатом.
 """
@@ -24,6 +24,8 @@ import os
 import subprocess
 import sys
 import time
+
+from _console import setup as _console_setup, child_env  # noqa: E402
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
@@ -81,7 +83,8 @@ def run(cmd: list[str], title: str) -> None:
     t = time.time()
     proc = subprocess.Popen(cmd, cwd=ROOT, stdout=subprocess.PIPE,
                             stderr=subprocess.STDOUT, text=True,
-                            encoding="utf-8", errors="replace", bufsize=1)
+                            encoding="utf-8", errors="replace", bufsize=1,
+                            env=child_env())
     assert proc.stdout is not None
     for line in proc.stdout:
         log(line.rstrip("\n"))
@@ -93,6 +96,7 @@ def run(cmd: list[str], title: str) -> None:
 
 
 def main() -> int:
+    _console_setup()
     ap = argparse.ArgumentParser(description="Полный прогон коллекции иконок")
     ap.add_argument("--slots", type=int, default=None, help="иконок с листа")
     ap.add_argument("--limit", type=int, default=None, help="первые N листов")
@@ -118,7 +122,7 @@ def main() -> int:
     run([sys.executable, os.path.join(HERE, "fetch_models.py")]
         + (["--all"] if args.smooth else []),
         "2/5  Модели апскейла")
-    run(base, "3/5  Нарезка → чистка → 256")
+    run(base, "3/5  Нарезка -> чистка -> 256")
     run([sys.executable, os.path.join(HERE, "make_batch_previews.py"),
          "--src", args.out], "4/5  Превью в samples/")
 

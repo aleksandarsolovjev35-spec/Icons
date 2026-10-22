@@ -6,7 +6,7 @@ make_batch_previews.py — превью для пакетного прогона
 `samples/`:
 
   batch_contact_sheet.jpg  — сетка по одной иконке с каждого листа
-  batch_montage.jpg        — 12 иконок из разных папок крупно (×2)
+  batch_montage.jpg        — 12 иконок из разных папок крупно (x2)
   batch_grid_<папка>.jpg   — полная сетка иконок одной папки (--per-folder N)
 
     python3 tools/make_batch_previews.py
@@ -17,9 +17,13 @@ from __future__ import annotations
 import argparse
 import glob
 import os
+import sys
 
 import cv2
 import numpy as np
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from _console import setup as _console_setup  # noqa: E402
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
@@ -52,6 +56,7 @@ def _grid(tiles: list[np.ndarray], cols: int, gap: int = 4,
 
 
 def main() -> int:
+    _console_setup()
     ap = argparse.ArgumentParser()
     ap.add_argument("--tile", type=int, default=96, help="размер миниатюры")
     ap.add_argument("--src", default=SRC, help="папка с результатами")
@@ -79,7 +84,7 @@ def main() -> int:
     sheet = _grid(tiles, cols, 3)
     cv2.imwrite(os.path.join(OUT, "batch_contact_sheet.jpg"), sheet,
                 [int(cv2.IMWRITE_JPEG_QUALITY), 90])
-    print("contact sheet:", sheet.shape[1], "×", sheet.shape[0],
+    print("contact sheet:", sheet.shape[1], "x", sheet.shape[0],
           f"({len(tiles)} листов)")
 
     # 2) монтаж: по одной иконке из разных папок, крупно
@@ -94,7 +99,7 @@ def main() -> int:
                for p in picks], 4, 4)
     cv2.imwrite(os.path.join(OUT, "batch_montage.jpg"), m,
                 [int(cv2.IMWRITE_JPEG_QUALITY), 92])
-    print("монтаж:", m.shape[1], "×", m.shape[0], f"({len(picks)} иконок)")
+    print("монтаж:", m.shape[1], "x", m.shape[0], f"({len(picks)} иконок)")
 
     # 3) сетки по папкам
     if args.per_folder:
