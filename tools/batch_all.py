@@ -77,53 +77,40 @@ def upscale(img: np.ndarray, size: int = 256, unsharp: float = 0.55,
 # --- рамка на готовом кадре -------------------------------------------------
 FRAME_RIM = 10      # толщина борта в пикселях ИТОГОВОГО кадра: одна на всех
 FRAME_GAP = 4       # зазор между бортом и рисунком: иконка целиком внутри рамки
-INSET_CROP = 2      # срезаем с края слота родную серо-белую линию листа
+INSET_CROP = 0      # ручной срез (0 - не срезать; линию листа убираем адаптивно)
 
 
-def inner_size(size: int) -> int:
-    """Сторона квадрата, в который вписывается сама иконка (внутри рамки)."""
-    return size - 2 * (FRAME_RIM + FRAME_GAP)
+def trim_sheet_line(img: np.ndarray, max_cut: int = 2) -> np.ndarray:
+    """Убрать родную серую линию листа на границе слота, не уменьшая иконку.
 
-
-def frame_params(variant: str, size: int) -> dict:
-    """Параметры бортика, пересчитанные в пиксели итогового кадра.
-
-    style_frame.py мериет расстояния в пикселях того изображения, на котором
-    рисует. Эталон у него - борт 5.5 px, поэтому длины масштабируем так,
-    чтобы борт стал ровно FRAME_RIM px, независимо от размера кадра.
+    Линия - это светлая ахроматичная полоса (яркость ~40-110, хрома ~0-10),
+    тогда как рисунок рядом почти чёрный или цветной. Такие края не срезаем
+    (иначе иконка становится мельче), а закрашиваем цветом соседней строки
+    внутри - размер остаётся максимальным, серой рамки листа нет.
     """
-    fp = S.params(variant, radius=0.0)
-    k = FRAME_RIM / fp["rim"]
-    for key in ("rim", "inset", "deep", "radius"):
-        fp[key] = max(0.0, float(fp[key]) * k)
-    fp["rim"] = float(FRAME_RIM)
-    # глубина внутренней тени при 256 px не должна залезать на рисунок:
-    # в эталоне она мерилась для слота ~145 px
-    fp["deep"] = min(fp["deep"], 9.0)
-    fp["radius"] = 0.0
-    return fp
+    def is_line(px: np.ndarray) -> bool:
+        f = px.astype(np.int16)
+        bright = f.mean()
+        chroma = (f.max(axis=1) - f.min(axis=1)).mean()
+        return bright >= 30 and chroma <= 14
 
-
-def compose_frame(body: np.ndarray, size: int, fp: dict) -> np.ndarray:
-    """Рамка рисуется первой, иконка вставляется внутрь - её никто не перекрывает.
-
-    Слот занимает весь кадр, борт тянется от края внутрь на rim + inset,
-    внутренняя тень уходит ещё на deep. Рисунок кладём в квадрат со стороной
-    size - 2 * (FRAME_RIM + FRAME_GAP): он целиком внутри борта, не обрезается
-    и не затемняется - в зазоре между бортом и рисунком видна глубина слота.
-    """
-    canvas = np.zeros((size, size, 3), np.uint8)
-    inner = inner_size(size)
-    # style_box тянет борт НАРУЖУ от переданного прямоугольника на rim px,
-    # поэтому прямоугольник ставим на FRAME_RIM внутрь: внешняя кромка борта
-    # ложится ровно на край кадра, без чёрной полосы снаружи
-    off = FRAME_RIM
-    S.style_box(canvas, (off, off, size - 1 - off, size - 1 - off), fp)
-    if body.shape[0] != inner or body.shape[1] != inner:
-        body = cv2.resize(body, (inner, inner), interpolation=cv2.INTER_AREA)
-    o = FRAME_RIM + FRAME_GAP      # зазор: в нём видна глубина слота
-    canvas[o:o + inner, o:o + inner] = body
-    return canvas
+    img = img.copy()
+    h, w = img.shape[:2]
+    if h < 2 * max_cut + 4 or w < 2 * max_cut + 4:
+        return img
+    for k in range(max_cut):                      # сверху
+        if is_line(img[k, :]):
+            img[k, :] = img[max_cut, :]
+    for k in range(max_cut):                      # снизу
+        if is_line(img[h - 1 - k, :]):
+            img[h - 1 - k, :] = img[h - 1 - max_cut, :]
+    for k in range(max_cut):                      # слева
+        if is_line(img[:, k]):
+            img[:, k] = img[:, max_cut]
+    for k in range(max_cut):                      # справа
+        if is_line(img[:, w - 1 - k]):
+            img[:, w - 1 - k] = img[:, w - 1 - max_cut]
+    return img
 
 
 def process_sheet(path: str, outroot: str, nslots: int | None,
@@ -157,16 +144,20 @@ def process_sheet(path: str, outroot: str, nslots: int | None,
                    max(0, x0 + pad):min(W, x1 + 1 - pad)]
         if crop.shape[0] < 8 or crop.shape[1] < 8:
             continue
+        crop = trim_sheet_line(crop)          # убрать линию листа, не рисунок
         clean = C.clean_fill(crop, "normal")
         if size > 0:                       # апскейл только если он запрошен
             big = upscale(clean, size=inner, algo=algo)
         else:
-            # пиксель в пиксель, без размытия; разница в 1 px по сторонам
-            # от детектора -> аккуратный квадрат по центру
+            # пиксель в пиксель, без размытия и без обрезки.
+            # Квадрат: не хватает пары пикселей по стороне -> добираем повтором
+            # краевой строки/столбца (рисунок от этого не страдает).
             h, w = clean.shape[:2]
-            d = min(h, w)
-            big = clean[(h - d) // 2:(h - d) // 2 + d,
-                        (w - d) // 2:(w - d) // 2 + d]
+            d = max(h, w)
+            pad_t, pad_b = 0, d - h
+            pad_l, pad_r = 0, d - w
+            big = cv2.copyMakeBorder(clean, pad_t, pad_b, pad_l, pad_r,
+                                     cv2.BORDER_REPLICATE)
         if fp is not None:
             big = compose_frame(big, size, fp)
         out = os.path.join(outdir, f"{stem}__slot{k:02d}.png")
