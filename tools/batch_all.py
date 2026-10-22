@@ -93,7 +93,9 @@ def process_sheet(path: str, outroot: str, nslots: int | None,
         img = img.copy()
         for box in boxes:
             S.style_box(img, box, fp)
-        pad = int(2 + fp["rim"] + 3)          # + запас под падающую тень
+        # ровно до внешней кромки борта: рамка упирается в край кадра,
+        # иначе вокруг неё остаётся тёмная полоса фона листа
+        pad = int(np.ceil(fp["rim"]))
 
     folder = os.path.relpath(os.path.dirname(path), ROOT)
     stem = os.path.splitext(os.path.basename(path))[0].replace(" ", "_")
