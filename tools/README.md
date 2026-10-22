@@ -210,6 +210,14 @@ python3 tools/upscale_icon.py in.png -o out.png --size 512 # другой раз
 Сравнения: `samples/upscale_compare.jpg` (nearest / lanczos / EDSR, 256),
 `samples/upscale_zoom.jpg` (фрагмент ×5), `samples/upscale_potion.jpg`.
 
+Пример на оружии (булава, `RPG Weapon Icons 05/file (84).jpg`, слот 1):
+`samples/weapon_compare.jpg` — ДО / чистка+nearest / чистка+lanczos /
+чистка+EDSR; `samples/weapon_zoom.jpg` — та же головка булавы крупно.
+Результаты: `samples/weapon/mace_raw.png` (167×167),
+`mace_clean.png`, `mace_256.png`. Чистка `normal`: шум на заливках 0.83 → 0.61,
+шум яркости 0.10 → 0.04, резкость 53.8 → 55.6; апскейл: резкость 2.16 → 2.34,
+цвет (a/b на насыщенных пикселях) 132.5/134.9 → 132.4/134.4.
+
 ## Проверка размера
 
 ```bash
