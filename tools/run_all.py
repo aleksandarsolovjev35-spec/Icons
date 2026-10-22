@@ -111,6 +111,9 @@ def main() -> int:
                     help="рамка-бортик: none (по умолчанию), sharp, deep, inset, soft")
     ap.add_argument("--no-frame", action="store_true",
                     help="без рамки (то же, что --frame none)")
+    ap.add_argument("--cut", default="line", choices=["line", "corner"],
+                    help="границы: line - по белой линии (по умолчанию), "
+                         "corner - по однотонным чёрным углам слота")
     ap.add_argument("--jobs", type=int, default=2)
     ap.add_argument("--open", action="store_true", help="открыть папку в конце")
     args = ap.parse_args()
@@ -123,7 +126,7 @@ def main() -> int:
     size = args.up or args.size
     base = [sys.executable, os.path.join(HERE, "batch_all.py"),
             "--out", args.out, "--jobs", str(args.jobs),
-            "--frame", frame, "--size", str(size)]
+            "--frame", frame, "--size", str(size), "--cut", args.cut]
     if args.slots:
         base += ["--slots", str(args.slots)]
     if args.limit:

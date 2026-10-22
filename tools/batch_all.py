@@ -123,8 +123,79 @@ def crop_by_sheet_line(img: np.ndarray, box) -> np.ndarray:
                max(0, x0 - el):min(w, x1 + 1 + er)]
 
 
+CORNER_P = 3        # отступ от линии сетки внутрь слота
+CORNER_I = 8        # размер углового плашка, по которому берём эталон фона
+
+
+def _uniform(px: np.ndarray) -> tuple[np.ndarray, float]:
+    """Средний цвет и разброс плашка (по самому «шумному» каналу)."""
+    flat = px.reshape(-1, 3).astype(np.float32)
+    return flat.mean(axis=0), float(flat.std(axis=0).max())
+
+
+def corner_box(img: np.ndarray, box, margin: int = 16):
+    """Вырез по однотонным чёрным углам (по часовой от левого верхнего).
+
+    Углы внутри слота почти всегда - ровный тёмный фон. Берём угол за эталон,
+    растущением находим всю однотонную область фона, по её границам строим
+    вырез и отступаем наружу по белой линии. Возвращает (x0, y0, x1, y1)
+    в координатах исходного листа или None, если уверенного угла нет.
+    """
+    x0, y0, x1, y1 = box
+    H, W = img.shape[:2]
+    wx0, wy0 = max(0, x0 - margin), max(0, y0 - margin)
+    wx1, wy1 = min(W, x1 + margin + 1), min(H, y1 + margin + 1)
+    win = img[wy0:wy1, wx0:wx1]
+    bx0, by0 = x0 - wx0, y0 - wy0
+    bx1, by1 = x1 - wx0, y1 - wy0
+    bh, bw = win.shape[:2]
+    best = None
+    for name in ("tl", "tr", "br", "bl"):          # по часовой стрелке
+        cx = bx0 + CORNER_P if name in ("tl", "bl") else bx1 - CORNER_P - CORNER_I + 1
+        cy = by0 + CORNER_P if name in ("tl", "tr") else by1 - CORNER_P - CORNER_I + 1
+        patch = win[max(0, cy):cy + CORNER_I, max(0, cx):cx + CORNER_I]
+        if patch.shape[0] < 3 or patch.shape[1] < 3:
+            continue
+        mean, std = _uniform(patch)
+        if std > 12:                                # угол не однотонный
+            continue
+        tol = max(14.0, 3.0 * std + 16.0)
+        diff = np.abs(win.astype(np.int16) - mean.astype(np.int16)).max(axis=2)
+        mask = (diff <= tol).astype(np.uint8)
+        if not mask[cy, cx]:
+            continue
+        flood = mask.copy()
+        mm = np.zeros((bh + 2, bw + 2), np.uint8)
+        cv2.floodFill(flood, mm, (cx, cy), 2)
+        ys, xs = np.where(flood == 2)
+        if len(xs) < 400:
+            continue
+        w_, h_ = xs.max() - xs.min() + 1, ys.max() - ys.min() + 1
+        if not (130 <= w_ <= 175 and 130 <= h_ <= 175):
+            continue
+        if best is None or len(xs) > best[0]:
+            best = (len(xs), int(xs.min()), int(ys.min()), int(xs.max()), int(ys.max()))
+    if best is None:
+        return None
+    _, cx0, cy0, cx1, cy1 = best
+
+    def out(run, start, step):
+        n = 0
+        i = start + step
+        while n < LINE_MAX and 0 <= i < len(run) and _line_like(run[i]):
+            n += 1
+            i += step
+        return n
+    cy_mid, cx_mid = (cy0 + cy1) // 2, (cx0 + cx1) // 2
+    el = out(win[cy_mid], cx0, -1); er = out(win[cy_mid], cx1, +1)
+    et = out(win[:, cx_mid], cy0, -1); eb = out(win[:, cx_mid], cy1, +1)
+    return (max(0, cx0 - el) + wx0, max(0, cy0 - et) + wy0,
+            min(bw - 1, cx1 + er) + wx0, min(bh - 1, cy1 + eb) + wy0)
+
+
 def process_sheet(path: str, outroot: str, nslots: int | None,
-                  algo: str, size: int, frame: str | None = None) -> dict:
+                  algo: str, size: int, frame: str | None = None,
+                  cut: str = "line") -> dict:
     t0 = time.time()
     img = cv2.imread(path)
     if img is None:
@@ -149,7 +220,15 @@ def process_sheet(path: str, outroot: str, nslots: int | None,
 
     made, noise_before, noise_after = 0, 0.0, 0.0
     for k, box in enumerate(mine):
-        crop = crop_by_sheet_line(img, box)   # режем по внешнему краю линии
+        if cut == "corner":
+            cb = corner_box(img, box)
+            if cb is not None:
+                cx0, cy0, cx1, cy1 = cb
+                crop = img[cy0:cy1 + 1, cx0:cx1 + 1]
+            else:
+                crop = crop_by_sheet_line(img, box)   # не вышло - обычный путь
+        else:
+            crop = crop_by_sheet_line(img, box)       # режем по внешнему краю линии
         if crop.shape[0] < 8 or crop.shape[1] < 8:
             continue
         clean = C.clean_fill(crop, "normal")
@@ -198,6 +277,9 @@ def main() -> int:
                     choices=["none"] + sorted(S.VARIANTS),
                     help="рамка-бортик вокруг иконки; по умолчанию none - без рамки. "
                          "Рамка требует --size (рисуется в пикселях кадра)")
+    ap.add_argument("--cut", default="line", choices=["line", "corner"],
+                    help="как искать границы: line - по внешнему краю белой линии "
+                         "(по умолчанию), corner - по однотонным чёрным углам слота")
     ap.add_argument("--jobs", type=int, default=2)
     args = ap.parse_args()
     frame = None if args.frame == "none" else args.frame
@@ -221,14 +303,15 @@ def main() -> int:
         from multiprocessing import Pool
         with Pool(args.jobs) as pool:
             for res in pool.imap_unordered(
-                    _worker, [(p, args.out, args.slots, algo, args.size, frame)
-                              for p in sheets]):
+                    _worker, [(p, args.out, args.slots, algo, args.size, frame,
+                               args.cut) for p in sheets]):
                 rows.append(res)
                 print(f"  [{len(rows)}/{len(sheets)}] {res['sheet']}  "
                       f"{res.get('slots', 0)} шт  {res.get('sec', 0)} c")
     else:
         for p in sheets:
-            res = process_sheet(p, args.out, args.slots, algo, args.size, frame)
+            res = process_sheet(p, args.out, args.slots, algo, args.size, frame,
+                                args.cut)
             rows.append(res)
             print(f"  [{len(rows)}/{len(sheets)}] {res['sheet']}  "
                   f"{res.get('slots', 0)} шт  {res.get('sec', 0)} c")
@@ -251,9 +334,9 @@ def main() -> int:
 
 
 def _worker(a):
-    p, out, n, algo, size, frame = a
+    p, out, n, algo, size, frame, cut = a
     try:
-        return process_sheet(p, out, n, algo, size, frame)
+        return process_sheet(p, out, n, algo, size, frame, cut)
     except Exception as e:                      # noqa: BLE001
         return {"sheet": os.path.relpath(p, ROOT), "slots": 0,
                 "error": str(e)[:120]}
