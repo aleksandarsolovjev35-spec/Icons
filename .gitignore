@@ -11,3 +11,4 @@ __pycache__/
 annotated/frames.csv
 annotated/frames.json
 tools/models/
+out/
