@@ -58,10 +58,10 @@ def edge_band(L: np.ndarray, lo: float = 11.0, hi: float = 30.0) -> np.ndarray:
 PRESETS = {
     # detail — сколько исходной фактуры возвращается поверх чистки (0..1):
     # в ровных заливках возвращается мало, у деталей — больше.
-    "soft":     dict(hL=8.0, hC=4.0, t=7, s=15, soft=0.0, detail=0.95),
-    "normal":   dict(hL=14.0, hC=5.0, t=7, s=15, soft=0.0, detail=0.90),
-    "strong":   dict(hL=20.0, hC=6.0, t=7, s=15, soft=0.0, detail=0.75),
-    "max":      dict(hL=28.0, hC=8.0, t=9, s=21, soft=0.0, detail=0.55),
+    "soft":     dict(hL=8.0, hC=4.0, t=7, s=15, soft=0.0, detail=0.95, flat_T=10.0),
+    "normal":   dict(hL=14.0, hC=5.0, t=7, s=15, soft=0.0, detail=0.90, flat_T=12.0),
+    "strong":   dict(hL=20.0, hC=6.0, t=7, s=15, soft=0.0, detail=0.75, flat_T=14.0),
+    "max":      dict(hL=28.0, hC=8.0, t=9, s=21, soft=0.0, detail=0.55, flat_T=16.0),
     # частотный способ (альтернатива)
     "freq":     dict(T=(6.0, 4.0, 4.0), soft=0.0, detail=0.0),
 }
@@ -212,6 +212,37 @@ def restore_detail(src: np.ndarray, cleaned: np.ndarray,
     return cv2.cvtColor(np.clip(out, 0, 255).astype(np.uint8), cv2.COLOR_LAB2BGR)
 
 
+def _std9(a: np.ndarray, k: int = 9) -> np.ndarray:
+    """Локальный разброс яркости в окне k×k — «сколько тут вообще есть структуры»."""
+    m = cv2.blur(a, (k, k))
+    m2 = cv2.blur(a * a, (k, k))
+    return np.sqrt(np.maximum(m2 - m * m, 0.0))
+
+
+def clean_flats(img: np.ndarray, cleaned: np.ndarray, T: float = 12.0,
+                k: int = 9, msize: int = 5, iters: int = 2,
+                feather: float = 2.0) -> np.ndarray:
+    """Добить остаточный шум ТАМ, ГДЕ НЕТ УЗОРА.
+
+    Заливки, фон и мягкие тени от узора отличаются локальным разбросом яркости
+    (std в окне 9×9): у мраморности, штриховки и бликов он большой, у ровного
+    цвета — маленький. Где разброс ниже T, дополнительно прогоняем медиану:
+    она снимает остаточную крупу и блочность 8×8, но не трогает градиент —
+    низкие частоты (сама тень) остаются на месте. Маска мягкая (`feather`),
+    поэтому стыка между зонами не видно.
+    """
+    if T <= 0:
+        return cleaned
+    s = _std9(cv2.cvtColor(img, cv2.COLOR_BGR2LAB)[..., 0].astype(np.float32), k)
+    m = np.clip((T - s) / max(T * 0.45, 1e-3), 0.0, 1.0)
+    m = cv2.GaussianBlur(m, (0, 0), feather)[..., None]
+    flat = cleaned
+    for _ in range(max(1, iters)):
+        flat = cv2.medianBlur(flat, msize)
+    return np.clip(flat.astype(np.float32) * m + cleaned.astype(np.float32) * (1 - m),
+                   0, 255).astype(np.uint8)
+
+
 def clean_fill(img: np.ndarray, preset: str = "normal") -> np.ndarray:
     """NLM (non-local means): пиксель заменяется средним по похожим на его
     окрестность фрагментам всего кадра, с весом по схожести. Шум на заливке
@@ -230,6 +261,8 @@ def clean_fill(img: np.ndarray, preset: str = "normal") -> np.ndarray:
                                            int(p["t"]), int(p["s"])))
     res = cv2.cvtColor(np.stack(ch, -1), cv2.COLOR_LAB2BGR)
     res = restore_detail(img, res, float(p.get("detail", 0.0)))
+    res = clean_flats(img, res, T=float(p.get("flat_T", 12.0)),
+                      msize=int(p.get("flat_med", 5)))
     return soften_edges(res, float(p.get("soft", 0.0)))
 
 
@@ -367,6 +400,8 @@ def main() -> int:
                     help="смягчение кромок 0..1 (0 — жёсткие)")
     ap.add_argument("--detail", type=float, default=None,
                     help="возврат исходной фактуры 0..1 (0 — только чистка)")
+    ap.add_argument("--flat-T", type=float, default=None,
+                    help="порог 'ровная зона' 0..40: больше — чистим шире (по умолчанию из пресета)")
     ap.add_argument("--hL", type=float, default=None,
                     help="сила чистки яркости 1..40 (по умолчанию из пресета)")
     ap.add_argument("--chroma", type=float, default=1.0, help="сила чистки цвета 0..2")
@@ -383,7 +418,7 @@ def main() -> int:
             raise SystemExit(f"не читается: {src}")
         if args.protect is not None or args.iters is not None \
                 or args.soft_edges is not None or args.detail is not None \
-                or args.hL is not None:
+                or args.hL is not None or args.flat_T is not None:
             p = dict(PRESETS[args.preset])
             if args.protect is not None:
                 p["dil"] = args.protect
@@ -396,6 +431,8 @@ def main() -> int:
                 p["detail"] = args.detail
             if args.hL is not None:
                 p["hL"] = args.hL
+            if args.flat_T is not None:
+                p["flat_T"] = args.flat_T
             PRESETS["_custom"] = p
             if "hL" in p or "T" in p:
                 res = clean_fill(img, "_custom")
