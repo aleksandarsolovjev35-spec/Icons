@@ -123,6 +123,46 @@ def crop_by_sheet_line(img: np.ndarray, box) -> np.ndarray:
                max(0, x0 - el):min(w, x1 + 1 + er)]
 
 
+DARK_MAX = 40       # «тёмный фон» слота
+INNER_MAX = 4       # сколько пикселей внутрь разрешено отступить от линии
+
+
+def _is_dark(px: np.ndarray) -> bool:
+    """Тёмный нейтральный пиксель - фон внутри слота."""
+    f = px.astype(np.int16)
+    return f.mean() <= DARK_MAX and (f.max() - f.min()) <= LINE_MAX_CHROMA
+
+
+def crop_by_inner_edge(img: np.ndarray, box) -> np.ndarray:
+    """Режем по ВНУТРЕННЕЙ стороне белой рамки, опираясь на тёмные пиксели.
+
+    bbox проходит по центру белой линии. От него идём внутрь слота и ставим
+    границу на первом реально тёмном пикселе фона - то есть белая линия в
+    иконку НЕ попадает. Если у края рисунок (пиксель цветной, не тёмный),
+    остаёмся на bbox: отрезать кусок картинки нельзя.
+    """
+    x0, y0, x1, y1 = box
+    H, W = img.shape[:2]
+    cy, cx = (y0 + y1) // 2, (x0 + x1) // 2
+
+    def inward(run, start, step):
+        for k in range(1, INNER_MAX + 1):
+            i = start + step * k
+            if not (0 <= i < len(run)):
+                break
+            if _is_dark(run[i]):
+                return i
+            if not _line_like(run[i]):
+                return start            # тут рисунок - не трогаем
+        return start
+
+    nx0 = inward(img[cy], x0, +1)
+    nx1 = inward(img[cy], x1, -1)
+    ny0 = inward(img[:, cx], y0, +1)
+    ny1 = inward(img[:, cx], y1, -1)
+    return img[max(0, ny0):min(H, ny1 + 1), max(0, nx0):min(W, nx1 + 1)]
+
+
 CORNER_P = 3        # отступ от линии сетки внутрь слота
 CORNER_I = 8        # размер углового плашка, по которому берём эталон фона
 
@@ -220,7 +260,9 @@ def process_sheet(path: str, outroot: str, nslots: int | None,
 
     made, noise_before, noise_after = 0, 0.0, 0.0
     for k, box in enumerate(mine):
-        if cut == "corner":
+        if cut == "inner":
+            crop = crop_by_inner_edge(img, box)       # по внутренней стороне рамки
+        elif cut == "corner":
             cb = corner_box(img, box)
             if cb is not None:
                 cx0, cy0, cx1, cy1 = cb
@@ -277,9 +319,10 @@ def main() -> int:
                     choices=["none"] + sorted(S.VARIANTS),
                     help="рамка-бортик вокруг иконки; по умолчанию none - без рамки. "
                          "Рамка требует --size (рисуется в пикселях кадра)")
-    ap.add_argument("--cut", default="line", choices=["line", "corner"],
-                    help="как искать границы: line - по внешнему краю белой линии "
-                         "(по умолчанию), corner - по однотонным чёрным углам слота")
+    ap.add_argument("--cut", default="inner", choices=["inner", "line", "corner"],
+                    help="как искать границы: inner - по внутренней стороне белой "
+                         "рамки, опираясь на тёмные пиксели (по умолчанию); "
+                         "line - по внешнему краю линии; corner - по чёрным углам")
     ap.add_argument("--jobs", type=int, default=2)
     args = ap.parse_args()
     frame = None if args.frame == "none" else args.frame

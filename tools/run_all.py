@@ -111,9 +111,10 @@ def main() -> int:
                     help="рамка-бортик: none (по умолчанию), sharp, deep, inset, soft")
     ap.add_argument("--no-frame", action="store_true",
                     help="без рамки (то же, что --frame none)")
-    ap.add_argument("--cut", default="line", choices=["line", "corner"],
-                    help="границы: line - по белой линии (по умолчанию), "
-                         "corner - по однотонным чёрным углам слота")
+    ap.add_argument("--cut", default="inner", choices=["inner", "line", "corner"],
+                    help="границы: inner - по внутренней стороне белой рамки, "
+                         "по тёмным пикселям (по умолчанию); line - по внешнему "
+                         "краю линии; corner - по однотонным чёрным углам")
     ap.add_argument("--jobs", type=int, default=2)
     ap.add_argument("--open", action="store_true", help="открыть папку в конце")
     args = ap.parse_args()
