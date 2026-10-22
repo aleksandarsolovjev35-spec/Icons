@@ -77,40 +77,44 @@ def upscale(img: np.ndarray, size: int = 256, unsharp: float = 0.55,
 # --- рамка на готовом кадре -------------------------------------------------
 FRAME_RIM = 10      # толщина борта в пикселях ИТОГОВОГО кадра: одна на всех
 FRAME_GAP = 4       # зазор между бортом и рисунком: иконка целиком внутри рамки
-INSET_CROP = 0      # ручной срез (0 - не срезать; линию листа убираем адаптивно)
+INSET_CROP = 0      # оставлено для совместимости: границы берём по белой линии
 
 
-def trim_sheet_line(img: np.ndarray, max_cut: int = 2) -> np.ndarray:
-    """Убрать родную серую линию листа на границе слота, не уменьшая иконку.
+LINE_MAX = 3        # насколько белая линия сетки может выступать за bbox
 
-    Линия - это светлая ахроматичная полоса (яркость ~40-110, хрома ~0-10),
-    тогда как рисунок рядом почти чёрный или цветной. Такие края не срезаем
-    (иначе иконка становится мельче), а закрашиваем цветом соседней строки
-    внутри - размер остаётся максимальным, серой рамки листа нет.
+
+def _line_like(px: np.ndarray) -> bool:
+    """Похоже на белую линию сетки: светлое и без цвета (px - один пиксель BGR)."""
+    f = px.astype(np.int16)
+    return f.mean() >= 30 and (f.max() - f.min()) <= 14
+
+
+def crop_by_sheet_line(img: np.ndarray, box) -> np.ndarray:
+    """Вырез ровно по внешнему краю белой линии сетки.
+
+    Детектор даёт bbox по ЦЕНТРУ линии, поэтому при обычном вырезе половина
+    линии оставалась в кадре, а половина терялась. Здесь мы отступаем наружу
+    на всю толщину линии (1-3 px, зависит от листа) — линия входит в иконку
+    целиком и служит её родной рамкой, а размер получается максимальным.
     """
-    def is_line(px: np.ndarray) -> bool:
-        f = px.astype(np.int16)
-        bright = f.mean()
-        chroma = (f.max(axis=1) - f.min(axis=1)).mean()
-        return bright >= 30 and chroma <= 14
-
-    img = img.copy()
+    x0, y0, x1, y1 = box
     h, w = img.shape[:2]
-    if h < 2 * max_cut + 4 or w < 2 * max_cut + 4:
-        return img
-    for k in range(max_cut):                      # сверху
-        if is_line(img[k, :]):
-            img[k, :] = img[max_cut, :]
-    for k in range(max_cut):                      # снизу
-        if is_line(img[h - 1 - k, :]):
-            img[h - 1 - k, :] = img[h - 1 - max_cut, :]
-    for k in range(max_cut):                      # слева
-        if is_line(img[:, k]):
-            img[:, k] = img[:, max_cut]
-    for k in range(max_cut):                      # справа
-        if is_line(img[:, w - 1 - k]):
-            img[:, w - 1 - k] = img[:, w - 1 - max_cut]
-    return img
+    cy, cx = (y0 + y1) // 2, (x0 + x1) // 2
+
+    def run(row, start, step):
+        n = 0
+        i = start + step
+        while n < LINE_MAX and 0 <= i < len(row) and _line_like(row[i]):
+            n += 1
+            i += step
+        return n
+
+    el = run(img[cy], x0, -1)
+    er = run(img[cy], x1, +1)
+    et = run(img[:, cx], y0, -1)
+    eb = run(img[:, cx], y1, +1)
+    return img[max(0, y0 - et):min(h, y1 + 1 + eb),
+               max(0, x0 - el):min(w, x1 + 1 + er)]
 
 
 def process_sheet(path: str, outroot: str, nslots: int | None,
@@ -130,7 +134,6 @@ def process_sheet(path: str, outroot: str, nslots: int | None,
     # Иначе чистка и супер-разрешение размывали борт, и его ширина гуляла
     # от иконки к иконке.  size <= 0 -> без апскейла вообще (родной размер).
     inner = size if frame is None else inner_size(size)   # сторона самой иконки
-    pad = INSET_CROP        # сколько срезать с края слота (родная линия рамки)
     fp = frame_params(frame, size) if frame else None
 
     folder = os.path.relpath(os.path.dirname(path), ROOT)
@@ -139,12 +142,10 @@ def process_sheet(path: str, outroot: str, nslots: int | None,
     os.makedirs(outdir, exist_ok=True)
 
     made, noise_before, noise_after = 0, 0.0, 0.0
-    for k, (x0, y0, x1, y1) in enumerate(mine):
-        crop = img[max(0, y0 + pad):min(H, y1 + 1 - pad),
-                   max(0, x0 + pad):min(W, x1 + 1 - pad)]
+    for k, box in enumerate(mine):
+        crop = crop_by_sheet_line(img, box)   # режем по внешнему краю линии
         if crop.shape[0] < 8 or crop.shape[1] < 8:
             continue
-        crop = trim_sheet_line(crop)          # убрать линию листа, не рисунок
         clean = C.clean_fill(crop, "normal")
         if size > 0:                       # апскейл только если он запрошен
             big = upscale(clean, size=inner, algo=algo)
