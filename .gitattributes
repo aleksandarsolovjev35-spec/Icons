@@ -1,0 +1,17 @@
+# .bat / .cmd — храним КАК ЕСТЬ, с CRLF внутри репозитория.
+# Почему не "text eol=crlf": тогда git хранит LF и конвертирует только при
+# checkout, а при скачивании ZIP/raw байты могут остаться LF — и cmd.exe
+# молча роняет скрипт, окно закрывается мгновенно. Здесь байты одинаковые
+# везде: clone, pull, ZIP, raw.
+*.bat   -text
+*.cmd   -text
+
+# шелл и python — LF, иначе bash/python ругаются на \r
+*.sh    text eol=lf
+*.py    text eol=lf
+
+# картинки и модели — бинарные
+*.png   binary
+*.jpg   binary
+*.jpeg  binary
+*.pb    binary
