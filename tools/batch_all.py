@@ -123,44 +123,57 @@ def crop_by_sheet_line(img: np.ndarray, box) -> np.ndarray:
                max(0, x0 - el):min(w, x1 + 1 + er)]
 
 
-DARK_MAX = 40       # «тёмный фон» слота
-INNER_MAX = 4       # сколько пикселей внутрь разрешено отступить от линии
-
-
-def _is_dark(px: np.ndarray) -> bool:
-    """Тёмный нейтральный пиксель - фон внутри слота."""
-    f = px.astype(np.int16)
-    return f.mean() <= DARK_MAX and (f.max() - f.min()) <= LINE_MAX_CHROMA
+INNER_DARK = 30     # яркость, ниже которой пиксель считается чёрным фоном
+INNER_MAX = 12      # сколько пикселей внутрь разрешено искать чёрное
 
 
 def crop_by_inner_edge(img: np.ndarray, box) -> np.ndarray:
-    """Режем по ВНУТРЕННЕЙ стороне белой рамки, опираясь на тёмные пиксели.
+    """Режем по внутренней стороне белой рамки - скан по КАЖДОЙ строке/столбцу.
 
-    bbox проходит по центру белой линии. От него идём внутрь слота и ставим
-    границу на первом реально тёмном пикселе фона - то есть белая линия в
-    иконку НЕ попадает. Если у края рисунок (пиксель цветной, не тёмный),
-    остаёмся на bbox: отрезать кусок картинки нельзя.
+    Идём от края слота внутрь, пока пиксель серый/белый (это линия), и
+    останавливаемся на первом реально чёрном пикселе фона. Считаем не по
+    одной центральной линии, а по всем строкам: рамку можно встретить где
+    угодно, а рисунок закрывает её лишь местами.
+
+    Смещения собираем по всем строкам и берём 85-й процентиль: там, где
+    рисунок доходит до края, скан упирается в него и не растягивает вырез,
+    а медиана не даёт паре «дырок» испортить результат. Если пиксель цветной
+    (рисунок) - дальше не идём, картинку не режем.
     """
     x0, y0, x1, y1 = box
     H, W = img.shape[:2]
-    cy, cx = (y0 + y1) // 2, (x0 + x1) // 2
+    ys = range(y0 + 3, y1 - 2)
+    xs = range(x0 + 3, x1 - 2)
 
-    def inward(run, start, step):
-        for k in range(1, INNER_MAX + 1):
-            i = start + step * k
-            if not (0 <= i < len(run)):
-                break
-            if _is_dark(run[i]):
-                return i
-            if not _line_like(run[i]):
-                return start            # тут рисунок - не трогаем
-        return start
+    def offset(fixed, step_x, step_y, sx, sy):
+        for d in range(INNER_MAX):
+            x, y = sx + step_x * d, sy + step_y * d
+            if step_x:
+                y = fixed
+            else:
+                x = fixed
+            if not (0 <= x < W and 0 <= y < H):
+                return 0
+            f = img[y, x].astype(np.int16)
+            if f.max() - f.min() > LINE_MAX_CHROMA:     # рисунок - не режем
+                return max(0, d - 1)
+            if f.mean() <= INNER_DARK:                  # чёрный фон - вот граница
+                return d
+        return 0
 
-    nx0 = inward(img[cy], x0, +1)
-    nx1 = inward(img[cy], x1, -1)
-    ny0 = inward(img[:, cx], y0, +1)
-    ny1 = inward(img[:, cx], y1, -1)
-    return img[max(0, ny0):min(H, ny1 + 1), max(0, nx0):min(W, nx1 + 1)]
+    def side(fixed, step_x, step_y, sx, sy):
+        vals = [offset(k, step_x, step_y, sx, sy) for k in fixed]
+        vals = [v for v in vals if v > 0]
+        if len(vals) < 3:
+            return 0
+        return int(np.percentile(vals, 85))
+
+    left = side(ys, +1, 0, x0, 0)
+    right = side(ys, -1, 0, x1, 0)
+    top = side(xs, 0, +1, 0, y0)
+    bottom = side(xs, 0, -1, 0, y1)
+    return img[max(0, y0 + top):min(H, y1 - bottom + 1),
+               max(0, x0 + left):min(W, x1 - right + 1)]
 
 
 CORNER_P = 3        # отступ от линии сетки внутрь слота
