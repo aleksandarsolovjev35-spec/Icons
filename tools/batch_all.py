@@ -129,6 +129,8 @@ LINE_WIN_IN = 4     # на сколько пикселей внутрь от к�
 LINE_WIN_OUT = 2    # и на сколько наружу (bbox иногда стоит чуть внутри линии)
 LINE_COVER = 0.5    # какую долю полосы должны занимать нейтрально-яркие пиксели
 LINE_EXTRA = 1      # на сколько пикселей режем глубже самой яркой полосы (кромка)
+LINE_COVER_N = 0.25 # линия может быть частично перекрыта цветным рисунком
+LINE_STD_N = 12     # но сами серые пиксели линии при этом очень ровные
 LINE_BRIGHT = 40    # ярче этого пиксель считается светлым (кандидат в линию)
 
 
@@ -181,9 +183,16 @@ def _inner_scan(img: np.ndarray, box) -> tuple[int, int, int, int]:
             return None
         bright = f.mean(axis=1)
         chroma = f.max(axis=1) - f.min(axis=1)
-        cov = float(((bright > LINE_BRIGHT) & (chroma <= LINE_MAX_CHROMA)).mean())
+        neutral = chroma <= LINE_MAX_CHROMA
+        cov = float(((bright > LINE_BRIGHT) & neutral).mean())
         med = float(np.median(bright))
-        return med, float(np.median(chroma)), cov, float(bright.std())
+        if neutral.any():
+            nb = bright[neutral]
+            nmed, nstd = float(np.median(nb)), float(nb.std())
+            ncov = float(neutral.mean())
+        else:
+            nmed, nstd, ncov = 0.0, 99.0, 0.0
+        return med, float(np.median(chroma)), cov, nmed, nstd, ncov
 
     def line(axis, base, limit, inward):
         """Самая яркая нейтральная полоса возле края - это линия рамки.
@@ -200,9 +209,14 @@ def _inner_scan(img: np.ndarray, box) -> tuple[int, int, int, int]:
             v = strip(y=c) if axis == 'y' else strip(x=c)
             if v is None:
                 continue
-            bright, chroma, cov, _ = v
-            if (bright > LINE_BRIGHT and chroma <= LINE_MAX_CHROMA
-                    and cov >= LINE_COVER):
+            bright, chroma, cov, nmed, nstd, ncov = v
+            clean = (bright > LINE_BRIGHT and chroma <= LINE_MAX_CHROMA
+                     and cov >= LINE_COVER)
+            # линия под цветным рисунком: своих серых пикселей немного,
+            # но они яркие и очень ровные вдоль всей стороны
+            under = (ncov >= LINE_COVER_N and nmed > LINE_BRIGHT
+                     and nstd <= LINE_STD_N)
+            if clean or under:
                 if best is None or bright > best[1]:
                     best = (c, bright)
         if best is None:
