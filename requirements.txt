@@ -1,2 +1,6 @@
 numpy>=1.24
 opencv-contrib-python-headless>=4.8
+# апскейл до 256 через Real-ESRGAN на CPU (без torch и Vulkan)
+ncnn>=1.0
+realesrgan-ncnn-py>=2.0
+

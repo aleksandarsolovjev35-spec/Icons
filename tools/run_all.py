@@ -100,12 +100,28 @@ def main() -> int:
     ap = argparse.ArgumentParser(description="Полный прогон коллекции иконок")
     ap.add_argument("--slots", type=int, default=None, help="иконок с листа")
     ap.add_argument("--limit", type=int, default=None, help="первые N листов")
-    ap.add_argument("--out", default=os.path.join(ROOT, "icons_256"))
+    ap.add_argument("--out", default=os.path.join(ROOT, "icons_cut"))
+    ap.add_argument("--size", type=int, default=0,
+                    help="сторона кадра; 0 (по умолчанию) - без апскейла, "
+                         "родной размер иконки")
+    ap.add_argument("--up", type=int, default=0,
+                    help="апскейл: 128, 256 или 512 (то же, что --size N)")
     ap.add_argument("--smooth", action="store_true", help="EDSR вместо FSRCNN")
-    ap.add_argument("--frame", default="sharp",
-                    help="рамка-бортик: sharp (по умолчанию), deep, inset, soft, none")
+    ap.add_argument("--sr", default="anime", choices=["anime", "edsr", "fsrcnn"],
+                    help="движок апскейла при --up/--size: anime - Real-ESRGAN "
+                         "(по умолчанию), edsr/fsrcnn - cv2.dnn_superres")
+    ap.add_argument("--device", default="auto", choices=["auto", "gpu", "cpu"],
+                    help="GPU через Vulkan (auto - если есть), иначе CPU")
+    ap.add_argument("--frame", default="none",
+                    help="рамка-бортик: none (по умолчанию), sharp, deep, inset, soft")
     ap.add_argument("--no-frame", action="store_true",
                     help="без рамки (то же, что --frame none)")
+    ap.add_argument("--canvas", type=int, default=151,
+                    help="довести кадр до N x N, добрав тёмный фон (0 - выключить)")
+    ap.add_argument("--cut", default="inner", choices=["inner", "line", "corner"],
+                    help="границы: inner - по внутренней стороне белой рамки, "
+                         "по тёмным пикселям (по умолчанию); line - по внешнему "
+                         "краю линии; corner - по однотонным чёрным углам")
     ap.add_argument("--jobs", type=int, default=2)
     ap.add_argument("--open", action="store_true", help="открыть папку в конце")
     args = ap.parse_args()
@@ -115,8 +131,12 @@ def main() -> int:
     check_env()
 
     frame = "none" if args.no_frame else args.frame
+    size = args.up or args.size
     base = [sys.executable, os.path.join(HERE, "batch_all.py"),
-            "--out", args.out, "--jobs", str(args.jobs), "--frame", frame]
+            "--out", args.out, "--jobs", str(args.jobs),
+            "--frame", frame, "--size", str(size), "--cut", args.cut,
+            "--sr", args.sr, "--device", args.device,
+            "--canvas", str(args.canvas)]
     if args.slots:
         base += ["--slots", str(args.slots)]
     if args.limit:

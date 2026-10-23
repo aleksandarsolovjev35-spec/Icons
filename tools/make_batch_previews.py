@@ -2,7 +2,7 @@
 """
 make_batch_previews.py — превью для пакетного прогона.
 
-Читает `icons_256/**/*.png` (результат tools/batch_all.py) и собирает в
+Читает `icons_cut/**/*.png` (результат tools/batch_all.py) и собирает в
 `samples/`:
 
   batch_contact_sheet.jpg  — сетка по одной иконке с каждого листа
@@ -27,7 +27,7 @@ from _console import setup as _console_setup  # noqa: E402
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
-SRC = os.path.join(ROOT, "icons_256")
+SRC = os.path.join(ROOT, "icons_cut")
 OUT = os.path.join(ROOT, "samples")
 
 
