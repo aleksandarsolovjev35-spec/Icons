@@ -63,6 +63,12 @@ def _unsharp(img: np.ndarray, amount: float, sigma: float) -> np.ndarray:
     return cv2.cvtColor(lab.astype(np.uint8), cv2.COLOR_LAB2BGR)
 
 
+def upscale_anime(img: np.ndarray, size: int = 256) -> np.ndarray:
+    """Real-ESRGAN (anime) - достраивает детали, а не размазывает их."""
+    import sr_ncnn
+    return sr_ncnn.upscale(img, size=size)
+
+
 def upscale(img: np.ndarray, size: int = 256, sharp: float = 0.4,
             sigma: float = 0.8, model: str | None = None) -> np.ndarray:
     """EDSR ×4 по яркости → точный размер `size` → лёгкий unsharp по L.
@@ -97,6 +103,9 @@ def main() -> int:
                     help="доводка микроконтраста 0..1 (0 — выключить)")
     ap.add_argument("--sigma", type=float, default=0.8)
     ap.add_argument("--model", default=None, help="путь к .pb (по умолчанию EDSR x4)")
+    ap.add_argument("--engine", default="anime", choices=["anime", "edsr"],
+                    help="anime - Real-ESRGAN (по умолчанию, достройка деталей), "
+                         "edsr - старый путь через cv2.dnn_superres")
     args = ap.parse_args()
 
     if not hasattr(cv2, "dnn_superres"):
@@ -108,7 +117,16 @@ def main() -> int:
         img = cv2.imread(src)
         if img is None:
             raise SystemExit(f"не читается: {src}")
-        res = upscale(img, args.size, args.sharp, args.sigma, args.model)
+        if args.engine == "anime":
+            import sr_ncnn
+            if sr_ncnn.available():
+                res = upscale_anime(img, args.size)
+            else:
+                print("Real-ESRGAN недоступен (pip install ncnn "
+                      "realesrgan-ncnn-py), беру EDSR", file=sys.stderr)
+                res = upscale(img, args.size, args.sharp, args.sigma, args.model)
+        else:
+            res = upscale(img, args.size, args.sharp, args.sigma, args.model)
         if args.out and len(args.images) == 1:
             dst = args.out
         else:

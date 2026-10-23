@@ -107,6 +107,9 @@ def main() -> int:
     ap.add_argument("--up", type=int, default=0,
                     help="апскейл: 128, 256 или 512 (то же, что --size N)")
     ap.add_argument("--smooth", action="store_true", help="EDSR вместо FSRCNN")
+    ap.add_argument("--sr", default="anime", choices=["anime", "edsr", "fsrcnn"],
+                    help="движок апскейла при --up/--size: anime - Real-ESRGAN "
+                         "(по умолчанию), edsr/fsrcnn - cv2.dnn_superres")
     ap.add_argument("--frame", default="none",
                     help="рамка-бортик: none (по умолчанию), sharp, deep, inset, soft")
     ap.add_argument("--no-frame", action="store_true",
@@ -130,6 +133,7 @@ def main() -> int:
     base = [sys.executable, os.path.join(HERE, "batch_all.py"),
             "--out", args.out, "--jobs", str(args.jobs),
             "--frame", frame, "--size", str(size), "--cut", args.cut,
+            "--sr", args.sr,
             "--canvas", str(args.canvas)]
     if args.slots:
         base += ["--slots", str(args.slots)]

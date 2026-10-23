@@ -60,7 +60,14 @@ def _sr(algo: str, scale: int = 4):
 
 def upscale(img: np.ndarray, size: int = 256, unsharp: float = 0.55,
             algo: str = "fsrcnn") -> np.ndarray:
-    """SR по яркости (цвет — Lanczos), затем доводка микроконтраста."""
+    """Апскейл иконки до size x size.
+
+    algo="anime" - Real-ESRGAN (достраивает детали; ~3 с на иконку);
+    algo="edsr"/"fsrcnn" - старый путь через cv2.dnn_superres (мылит).
+    """
+    if algo == "anime":
+        import sr_ncnn
+        return sr_ncnn.upscale(img, size=size)
     sr = _sr(algo, 4)
     lab = cv2.cvtColor(img, cv2.COLOR_BGR2LAB)
     big = sr.upsample(cv2.cvtColor(lab[..., 0], cv2.COLOR_GRAY2BGR))
@@ -429,6 +436,10 @@ def main() -> int:
                          "родной размер иконки")
     ap.add_argument("--smooth", action="store_true",
                     help="EDSR (качественнее, ~9 c на иконку) вместо FSRCNN")
+    ap.add_argument("--sr", default="anime", choices=["anime", "edsr", "fsrcnn"],
+                    help="движок апскейла при --size: anime - Real-ESRGAN "
+                         "(по умолчанию, достройка деталей, ~3 c на иконку); "
+                         "edsr/fsrcnn - cv2.dnn_superres (мылит)")
     ap.add_argument("--frame", default="none",
                     choices=["none"] + sorted(S.VARIANTS),
                     help="рамка-бортик вокруг иконки; по умолчанию none - без рамки. "
@@ -451,7 +462,17 @@ def main() -> int:
                     if os.path.basename(os.path.dirname(p)) not in ("samples",))
     if args.limit:
         sheets = sheets[:args.limit]
-    algo = "edsr" if args.smooth else "fsrcnn"
+    if args.size > 0 and args.sr:
+        algo = args.sr
+        if algo == "anime":
+            import sr_ncnn
+            if not sr_ncnn.available():
+                print("Real-ESRGAN недоступен: pip install ncnn "
+                      "realesrgan-ncnn-py — перехожу на EDSR")
+                algo = "edsr"
+                args.smooth = True
+    else:
+        algo = "edsr" if args.smooth else "fsrcnn"
     fetch_models.ensure(all_models=args.smooth)      # модели качаются один раз
     scale_txt = f"{args.size}x{args.size}" if args.size > 0 else "1:1 без апскейла"
     print(f"листов: {len(sheets)} | слотов с листа: {args.slots or 'все'} | "
