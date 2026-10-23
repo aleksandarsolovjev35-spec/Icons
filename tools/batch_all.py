@@ -513,6 +513,9 @@ def main() -> int:
         algo = "edsr" if args.smooth else "fsrcnn"
     fetch_models.ensure(all_models=args.smooth)      # модели качаются один раз
     scale_txt = f"{args.size}x{args.size}" if args.size > 0 else "1:1 без апскейла"
+    if args.size > 0 and args.canvas > 0:
+        print(f"добивка фоном до {args.canvas}px не нужна: при апскейле в сеть "
+              f"идёт сам вырез, без чёрных полей")
     print(f"листов: {len(sheets)} | слотов с листа: {args.slots or 'все'} | "
           f"размер: {scale_txt} | рамка: {args.frame} | -> {args.out}")
 
