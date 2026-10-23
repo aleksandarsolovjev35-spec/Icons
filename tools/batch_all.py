@@ -127,6 +127,11 @@ INNER_DARK = 30     # яркость, ниже которой пиксель с�
 INNER_MAX = 12      # сколько пикселей внутрь разрешено искать чёрное
 
 
+def inner_rect(img: np.ndarray, box) -> tuple[int, int, int, int]:
+    """Границы выреза по внутренней стороне рамки (в координатах листа)."""
+    return _inner_scan(img, box)
+
+
 def crop_by_inner_edge(img: np.ndarray, box) -> np.ndarray:
     """Режем по внутренней стороне белой рамки - скан по КАЖДОЙ строке/столбцу.
 
@@ -140,6 +145,11 @@ def crop_by_inner_edge(img: np.ndarray, box) -> np.ndarray:
     а медиана не даёт паре «дырок» испортить результат. Если пиксель цветной
     (рисунок) - дальше не идём, картинку не режем.
     """
+    r = _inner_scan(img, box)
+    return img[r[1]:r[3], r[0]:r[2]]
+
+
+def _inner_scan(img: np.ndarray, box) -> tuple[int, int, int, int]:
     x0, y0, x1, y1 = box
     H, W = img.shape[:2]
     ys = range(y0 + 3, y1 - 2)
@@ -155,9 +165,9 @@ def crop_by_inner_edge(img: np.ndarray, box) -> np.ndarray:
             if not (0 <= x < W and 0 <= y < H):
                 return 0
             f = img[y, x].astype(np.int16)
-            if f.max() - f.min() > LINE_MAX_CHROMA:     # рисунок - не режем
+            if f.max() - f.min() > LINE_MAX_CHROMA:
                 return max(0, d - 1)
-            if f.mean() <= INNER_DARK:                  # чёрный фон - вот граница
+            if f.mean() <= INNER_DARK:
                 return d
         return 0
 
@@ -172,8 +182,46 @@ def crop_by_inner_edge(img: np.ndarray, box) -> np.ndarray:
     right = side(ys, -1, 0, x1, 0)
     top = side(xs, 0, +1, 0, y0)
     bottom = side(xs, 0, -1, 0, y1)
-    return img[max(0, y0 + top):min(H, y1 - bottom + 1),
-               max(0, x0 + left):min(W, x1 - right + 1)]
+    return (max(0, x0 + left), max(0, y0 + top),
+            min(W, x1 - right + 1), min(H, y1 - bottom + 1))
+
+
+CANVAS = 151        # итоговый кадр: мелкие иконки добираем фоном до этого размера
+
+
+def pad_to_canvas(img: np.ndarray, rect, target: int = CANVAS) -> np.ndarray:
+    """Довести вырез до target x target, дорисовав тёмный фон по сторонам.
+
+    Иконка НЕ масштабируется: остаётся пиксель в пиксель, а вокруг неё
+    появляется ровный тёмный фон - цвет берём из настоящего фона листа
+    рядом со слотом (тёмный жёлоб, без белой линии). Так мелкая иконка
+    встаёт в тот же кадр, что и крупные, но без мыла от растягивания.
+    """
+    x0, y0, x1, y1 = rect
+    crop = img[y0:y1, x0:x1]
+    h, w = crop.shape[:2]
+    if max(h, w) >= target:      # крупнее кадра - режем по центру, не растягиваем
+        oy, ox = (h - target) // 2, (w - target) // 2
+        return crop[oy:oy + target, ox:ox + target].copy()
+
+    # фон: тёмные нейтральные пиксели вокруг слота
+    H, W = img.shape[:2]
+    m = 14
+    wnd = img[max(0, y0 - m):min(H, y1 + m), max(0, x0 - m):min(W, x1 + m)]
+    f = wnd.astype(np.int16)
+    bright = f.mean(axis=2)
+    chroma = f.max(axis=2) - f.min(axis=2)
+    bg_mask = (bright <= 35) & (chroma <= 25)
+    if bg_mask.sum() >= 30:
+        bg = np.median(wnd[bg_mask], axis=0)
+    else:                                     # совсем нет фона - тёмный нейтральный
+        bg = np.array([8.0, 8.0, 8.0])
+
+    canvas = np.empty((target, target, 3), np.uint8)
+    canvas[:] = np.clip(bg, 0, 255).astype(np.uint8)
+    ly, lx = (target - h) // 2, (target - w) // 2
+    canvas[ly:ly + h, lx:lx + w] = crop
+    return canvas
 
 
 CORNER_P = 3        # отступ от линии сетки внутрь слота
@@ -248,7 +296,7 @@ def corner_box(img: np.ndarray, box, margin: int = 16):
 
 def process_sheet(path: str, outroot: str, nslots: int | None,
                   algo: str, size: int, frame: str | None = None,
-                  cut: str = "line") -> dict:
+                  cut: str = "line", canvas: int = CANVAS) -> dict:
     t0 = time.time()
     img = cv2.imread(path)
     if img is None:
@@ -273,8 +321,10 @@ def process_sheet(path: str, outroot: str, nslots: int | None,
 
     made, noise_before, noise_after = 0, 0.0, 0.0
     for k, box in enumerate(mine):
+        rect = None
         if cut == "inner":
-            crop = crop_by_inner_edge(img, box)       # по внутренней стороне рамки
+            rect = _inner_scan(img, box)              # по внутренней стороне рамки
+            crop = img[rect[1]:rect[3], rect[0]:rect[2]]
         elif cut == "corner":
             cb = corner_box(img, box)
             if cb is not None:
@@ -286,6 +336,9 @@ def process_sheet(path: str, outroot: str, nslots: int | None,
             crop = crop_by_sheet_line(img, box)       # режем по внешнему краю линии
         if crop.shape[0] < 8 or crop.shape[1] < 8:
             continue
+        # добивка кадра родным тёмным фоном (без масштабирования иконки)
+        if canvas > 0 and size <= 0 and rect is not None:
+            crop = pad_to_canvas(img, rect, canvas)
         clean = C.clean_fill(crop, "normal")
         if size > 0:                       # апскейл только если он запрошен
             big = upscale(clean, size=inner, algo=algo)
@@ -332,6 +385,9 @@ def main() -> int:
                     choices=["none"] + sorted(S.VARIANTS),
                     help="рамка-бортик вокруг иконки; по умолчанию none - без рамки. "
                          "Рамка требует --size (рисуется в пикселях кадра)")
+    ap.add_argument("--canvas", type=int, default=CANVAS,
+                    help="довести кадр до N x N, добрав тёмный фон по сторонам "
+                         "(0 - выключить); работает без апскейла")
     ap.add_argument("--cut", default="inner", choices=["inner", "line", "corner"],
                     help="как искать границы: inner - по внутренней стороне белой "
                          "рамки, опираясь на тёмные пиксели (по умолчанию); "
@@ -360,14 +416,14 @@ def main() -> int:
         with Pool(args.jobs) as pool:
             for res in pool.imap_unordered(
                     _worker, [(p, args.out, args.slots, algo, args.size, frame,
-                               args.cut) for p in sheets]):
+                               args.cut, args.canvas) for p in sheets]):
                 rows.append(res)
                 print(f"  [{len(rows)}/{len(sheets)}] {res['sheet']}  "
                       f"{res.get('slots', 0)} шт  {res.get('sec', 0)} c")
     else:
         for p in sheets:
             res = process_sheet(p, args.out, args.slots, algo, args.size, frame,
-                                args.cut)
+                                args.cut, args.canvas)
             rows.append(res)
             print(f"  [{len(rows)}/{len(sheets)}] {res['sheet']}  "
                   f"{res.get('slots', 0)} шт  {res.get('sec', 0)} c")
@@ -390,9 +446,9 @@ def main() -> int:
 
 
 def _worker(a):
-    p, out, n, algo, size, frame, cut = a
+    p, out, n, algo, size, frame, cut, canvas = a
     try:
-        return process_sheet(p, out, n, algo, size, frame, cut)
+        return process_sheet(p, out, n, algo, size, frame, cut, canvas)
     except Exception as e:                      # noqa: BLE001
         return {"sheet": os.path.relpath(p, ROOT), "slots": 0,
                 "error": str(e)[:120]}

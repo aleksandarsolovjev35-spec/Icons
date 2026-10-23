@@ -111,6 +111,8 @@ def main() -> int:
                     help="рамка-бортик: none (по умолчанию), sharp, deep, inset, soft")
     ap.add_argument("--no-frame", action="store_true",
                     help="без рамки (то же, что --frame none)")
+    ap.add_argument("--canvas", type=int, default=151,
+                    help="довести кадр до N x N, добрав тёмный фон (0 - выключить)")
     ap.add_argument("--cut", default="inner", choices=["inner", "line", "corner"],
                     help="границы: inner - по внутренней стороне белой рамки, "
                          "по тёмным пикселям (по умолчанию); line - по внешнему "
@@ -127,7 +129,8 @@ def main() -> int:
     size = args.up or args.size
     base = [sys.executable, os.path.join(HERE, "batch_all.py"),
             "--out", args.out, "--jobs", str(args.jobs),
-            "--frame", frame, "--size", str(size), "--cut", args.cut]
+            "--frame", frame, "--size", str(size), "--cut", args.cut,
+            "--canvas", str(args.canvas)]
     if args.slots:
         base += ["--slots", str(args.slots)]
     if args.limit:
