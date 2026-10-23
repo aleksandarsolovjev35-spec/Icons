@@ -43,6 +43,13 @@ _GPU: bool | None = None
 
 
 _GPU_INSTANCE = None
+# Проверено ли fp16 на этой машине: None - ещё нет, False - не работает.
+# Запоминаем на весь прогон, иначе каждая иконка считалась бы дважды.
+_FP16_OK: bool | None = None
+_FP16_WARNED = False
+# GPU оказался негодным (fp32 тоже с NaN или драйвер падает) - дальше весь
+# прогон считаем на CPU, чтобы не платить за это каждую иконку.
+_GPU_BROKEN = False
 
 
 def _init_vulkan():
@@ -121,9 +128,15 @@ def available() -> bool:
                for ext in (".param", ".bin"))
 
 
+_NETS: dict[tuple, object] = {}
+
+
 def _net(model: str, device: str = "auto", threads: int = 1,
          fp16: bool = True):
     import ncnn
+    key = (model, device, threads, bool(fp16))
+    if key in _NETS:                     # модель грузим один раз на процесс
+        return _NETS[key]
     d = models_dir()
     if not d:
         raise RuntimeError(
@@ -154,6 +167,7 @@ def _net(model: str, device: str = "auto", threads: int = 1,
         net.opt.num_threads = max(1, int(threads))
     net.load_param(base + ".param")
     net.load_model(base + ".bin")
+    _NETS[key] = net
     return net
 
 
@@ -208,21 +222,51 @@ def upscale(img: np.ndarray, size: int = 256, model: str = DEFAULT_MODEL,
 
     device: "auto" (GPU если есть Vulkan, иначе CPU), "gpu", "cpu".
     """
+    global _FP16_OK, _FP16_WARNED, _GPU_BROKEN
     dev = pick_device(device)
+    if _GPU_BROKEN:
+        dev = "cpu"
+    if dev == "gpu" and fp16 and _FP16_OK is None:
+        # один дешёвый пробный прогон на 64x64: если карта врёт в fp16,
+        # узнаём это до первой иконки, а не после
+        try:
+            rng = np.random.default_rng(0)
+            probe = (rng.random((64, 64, 3)) * 255).astype(np.uint8)
+            _, bad = _sr(probe, model, "gpu", threads, fp16=True)
+            _FP16_OK = bad == 0
+        except Exception:                 # noqa: BLE001
+            _FP16_OK = False
+        if not _FP16_OK and not _FP16_WARNED:
+            _FP16_WARNED = True
+            print("видеокарта не считает fp16 (RX 580 и подобные) — "
+                  "весь прогон в fp32", file=sys.stderr)
+    if _FP16_OK is False:
+        fp16 = False                      # уже знаем: на этой карте не считать
     try:
         big, bad = _sr(img, model, dev, threads, fp16)
-        if bad:
-            # fp16 на этой видеокарте даёт NaN — пересчитываем без него
-            print(f"fp16 дал {bad} битых значений, пересчитываю в fp32",
-                  file=sys.stderr)
+        if bad and fp16:
+            # fp16 на этой видеокарте даёт NaN — решаем это один раз на весь
+            # прогон, а не пересчитываем каждую иконку по второму разу
+            _FP16_OK = False
+            if not _FP16_WARNED:
+                _FP16_WARNED = True
+                print("fp16 на этой видеокарте даёт NaN — дальше считаю в "
+                      "fp32 (медленнее, зато без пересчёта каждой иконки)",
+                      file=sys.stderr)
             big, _ = _sr(img, model, dev, threads, fp16=False)
+        if bad and not fp16:
+            # fp32 тоже врёт — значит дело не в точности, уходим на CPU
+            raise RuntimeError(f"{bad} нечисловых пикселей даже в fp32")
     except Exception as e:                      # noqa: BLE001
         if dev != "gpu":
             raise
         # драйвер Vulkan может упасть на конкретной карте — не роняем
         # прогон из-за этого, считаем ту же иконку на CPU
-        print(f"GPU не смог ({e}); считаю на CPU", file=sys.stderr)
-        big, _ = _sr(img, model, "cpu", threads, fp16)
+        if not _GPU_BROKEN:
+            _GPU_BROKEN = True
+            print(f"GPU не смог ({e}); дальше весь прогон на CPU",
+                  file=sys.stderr)
+        big, _ = _sr(img, model, "cpu", threads, fp16=False)
     out = cv2.resize(big, (size, size), interpolation=cv2.INTER_AREA)
     if denoise:
         out = flat_denoise(out)
