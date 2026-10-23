@@ -136,6 +136,9 @@ INNER_DARK = 30     # яркость, ниже которой пиксель с�
 LINE_MIN = 15       # ярче этого - уже не чёрный фон, а линия или рисунок
 LINE_WIN_IN = 4     # на сколько пикселей внутрь от края bbox ищем линию
 LINE_WIN_OUT = 2    # и на сколько наружу (bbox иногда стоит чуть внутри линии)
+LINE_DEEP = 12      # запасной проход, если линия оказалась глубже окна
+LINE_DEEP_COVER = 0.6   # линия в запасном проходе занимает большую часть стороны
+LINE_DEEP_STD = 14      # и ровная вдоль стороны (рисунок гуляет на 20-60)
 LINE_COVER = 0.5    # какую долю полосы должны занимать нейтрально-яркие пиксели
 LINE_EXTRA = 1      # на сколько пикселей режем глубже самой яркой полосы (кромка)
 LINE_COVER_N = 0.25 # линия может быть частично перекрыта цветным рисунком
@@ -232,10 +235,47 @@ def _inner_scan(img: np.ndarray, box) -> tuple[int, int, int, int]:
             return None
         return best[0] + inward * LINE_EXTRA
 
-    left = line('x', x0, W, +1)
-    right = line('x', x1, W, -1)
-    top = line('y', y0, H, +1)
-    bottom = line('y', y1, H, -1)
+    def find(axis, base, limit, inward):
+        """Линия у края, с запасным проходом глубже по чёрному фону.
+
+        Детектор рамки иногда ставит box на 5-6 px НАРУЖУ линии (кейс
+        `RPG Loot Icons 14 Part 2`, слот 3: линия на x=698, а box - x1=703).
+        Тогда в окно поиска линия не попадает, и прежний код откатывался на
+        край box - линия оставалась ВНУТРИ выреза.
+
+        Запасной проход идёт от края box внутрь по чёрному фону и
+        останавливается на первой НЕ чёрной полосе: если это линия (ровная,
+        светлая, нейтральная) - режем сразу за ней; если рисунок - не
+        трогаем, чтобы не срезать иконку.
+        """
+        found = line(axis, base, limit, inward)
+        if found is not None:
+            return found
+        seen = False                 # уже встретили линию
+        for step in range(1, LINE_DEEP + 1):
+            c = base + inward * step
+            if not (0 <= c < limit):
+                return None
+            v = strip(y=c) if axis == 'y' else strip(x=c)
+            if v is None:
+                return None
+            bright, chroma, cov, nmed, nstd, ncov = v
+            if bright < LINE_BRIGHT:     # чёрный фон
+                if seen:                 # линия кончилась - режем здесь
+                    return c
+                continue                 # ещё идём по фону
+            is_line = (chroma <= LINE_MAX_CHROMA and cov >= LINE_DEEP_COVER
+                       and nstd <= LINE_DEEP_STD)
+            if is_line:                  # линия может быть в 2-3 px толщиной
+                seen = True
+                continue
+            return None                  # светлое, но не линия - не режем
+        return None
+
+    left = find('x', x0, W, +1)
+    right = find('x', x1, W, -1)
+    top = find('y', y0, H, +1)
+    bottom = find('y', y1, H, -1)
     lx = left + 1 if left is not None else max(0, x0)
     ty = top + 1 if top is not None else max(0, y0)
     rx = right if right is not None else min(W, x1 + 1)
