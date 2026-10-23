@@ -67,7 +67,8 @@ def upscale(img: np.ndarray, size: int = 256, unsharp: float = 0.55,
     """
     if algo == "anime":
         import sr_ncnn
-        return sr_ncnn.upscale(img, size=size, device=SR_DEVICE)
+        return sr_ncnn.upscale(img, size=size, device=SR_DEVICE,
+                               threads=SR_THREADS)
     sr = _sr(algo, 4)
     lab = cv2.cvtColor(img, cv2.COLOR_BGR2LAB)
     big = sr.upsample(cv2.cvtColor(lab[..., 0], cv2.COLOR_GRAY2BGR))
@@ -349,7 +350,11 @@ def corner_box(img: np.ndarray, box, margin: int = 16):
             min(bw - 1, cx1 + er) + wx0, min(bh - 1, cy1 + eb) + wy0)
 
 
-SR_DEVICE = "auto"      # auto | gpu | cpu (ставится в main, читается воркерами)
+# auto | gpu | cpu. Ставится в main, а воркеры (на Windows они стартуют
+# заново, через spawn) читают значение из переменной окружения.
+SR_DEVICE = os.environ.get("SR_DEVICE", "auto")
+# сколько потоков дать ncnn на CPU; на GPU всегда 1
+SR_THREADS = int(os.environ.get("SR_THREADS", "1"))
 
 
 def process_sheet(path: str, outroot: str, nslots: int | None,
@@ -485,7 +490,21 @@ def main() -> int:
                     print(f"{e}\nперехожу на CPU")
                     dev = "cpu"
                 globals()["SR_DEVICE"] = dev
-                print(f"апскейл: Real-ESRGAN на {'GPU (Vulkan)' if dev == 'gpu' else 'CPU'}")
+                os.environ["SR_DEVICE"] = dev          # для воркеров (spawn)
+                if dev == "gpu":
+                    card = sr_ncnn.gpu_name()
+                    print(f"апскейл: Real-ESRGAN на GPU (Vulkan)"
+                          + (f" — {card}" if card else ""))
+                else:
+                    # на CPU делим ядра между процессами: иначе один поток
+                    # на иконку - это треть скорости машины
+                    cores = os.cpu_count() or 1
+                    per = max(1, cores // max(1, args.jobs))
+                    os.environ["SR_THREADS"] = str(per)
+                    globals()["SR_THREADS"] = per
+                    print(f"апскейл: Real-ESRGAN на CPU, {cores} ядер "
+                          f"-> {per} поток(а) на процесс "
+                          f"(видеокарта не найдена — tools/gpu_check.py)")
                 if dev == "gpu" and args.jobs > 1:
                     print("на GPU ставлю --jobs 1 (иначе процессы дерутся "
                           "за видеопамять)")
@@ -494,6 +513,9 @@ def main() -> int:
         algo = "edsr" if args.smooth else "fsrcnn"
     fetch_models.ensure(all_models=args.smooth)      # модели качаются один раз
     scale_txt = f"{args.size}x{args.size}" if args.size > 0 else "1:1 без апскейла"
+    if args.size > 0 and args.canvas > 0:
+        print(f"добивка фоном до {args.canvas}px не нужна: при апскейле в сеть "
+              f"идёт сам вырез, без чёрных полей")
     print(f"листов: {len(sheets)} | слотов с листа: {args.slots or 'все'} | "
           f"размер: {scale_txt} | рамка: {args.frame} | -> {args.out}")
 

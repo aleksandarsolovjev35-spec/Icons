@@ -56,7 +56,7 @@ def head(t: str) -> None:
     log("=" * 66)
 
 
-def check_env() -> None:
+def check_env(sr: str = "anime") -> None:
     head("1/5  Проверка окружения")
     log(f"  Python {sys.version.split()[0]}")
     if sys.version_info < (3, 9):
@@ -75,6 +75,12 @@ def check_env() -> None:
         log("    pip install --force-reinstall opencv-contrib-python-headless")
         sys.exit(1)
     log("  dnn_superres: есть")
+    if sr == "anime":
+        try:
+            import gpu_check
+            log("  " + "\n  ".join(gpu_check.report()[2:]))
+        except Exception as e:                          # noqa: BLE001
+            log(f"  видеокарта: проверить не удалось ({e})")
 
 
 def run(cmd: list[str], title: str) -> None:
@@ -128,7 +134,7 @@ def main() -> int:
 
     _open_log()
     log(f"папка: {ROOT}")
-    check_env()
+    check_env(args.sr)
 
     frame = "none" if args.no_frame else args.frame
     size = args.up or args.size

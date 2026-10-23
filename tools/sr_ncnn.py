@@ -42,14 +42,38 @@ SCALES = {"realesrgan-x4plus-anime": 4, "realesrgan-x4plus": 4,
 _GPU: bool | None = None
 
 
+_GPU_INSTANCE = None
+
+
+def _init_vulkan():
+    """Поднять Vulkan один раз и держать инстанс живым.
+
+    Если отпустить объект, ncnn может освободить инстанс, и следующий
+    процесс/поток увидит 0 устройств. Поэтому ссылку храним в модуле.
+    """
+    global _GPU_INSTANCE
+    import ncnn
+    if _GPU_INSTANCE is None:
+        _GPU_INSTANCE = ncnn.create_gpu_instance()
+    return ncnn
+
+
 def gpu_count() -> int:
     """Сколько GPU видит Vulkan (0 - видеокарты нет или нет драйвера)."""
     try:
-        import ncnn
-        ncnn.create_gpu_instance()
+        ncnn = _init_vulkan()
         return int(ncnn.get_gpu_count())
     except Exception:
         return 0
+
+
+def gpu_name(index: int = 0) -> str:
+    """Имя видеокарты для лога ('' - не прочитать)."""
+    try:
+        ncnn = _init_vulkan()
+        return str(ncnn.get_gpu_info(index).device_name())
+    except Exception:
+        return ""
 
 
 def pick_device(device: str = "auto") -> str:
@@ -59,9 +83,10 @@ def pick_device(device: str = "auto") -> str:
     if device == "gpu":
         if gpu_count() == 0:
             raise RuntimeError(
-                "GPU не найден: Vulkan не видит видеокарту. "
-                "На Windows нужен свежий драйвер, на Linux - libvulkan1 + ICD. "
-                "Запусти с --device cpu.")
+                "GPU не найден: Vulkan не видит ни одной видеокарты. "
+                "Запусти tools/gpu_check.py — он скажет, чего не хватает. "
+                "На Windows почти всегда помогает обновление драйвера. "
+                "Пока считаю на CPU.")
         return "gpu"
     return "gpu" if gpu_count() > 0 else "cpu"
 
@@ -96,7 +121,7 @@ def available() -> bool:
                for ext in (".param", ".bin"))
 
 
-def _net(model: str, device: str = "auto"):
+def _net(model: str, device: str = "auto", threads: int = 1):
     import ncnn
     d = models_dir()
     if not d:
@@ -107,27 +132,33 @@ def _net(model: str, device: str = "auto"):
         raise RuntimeError(f"нет модели {model} в {d}")
     net = ncnn.Net()
     if device == "gpu":
-        ncnn.create_gpu_instance()
+        _init_vulkan()
         net.opt.use_vulkan_compute = True
         net.opt.num_threads = 1
+        # fp16 на Vulkan: на иконках разницы не видно, а считает быстрее
+        for opt in ("use_fp16_packed", "use_fp16_storage",
+                    "use_fp16_arithmetic"):
+            if hasattr(net.opt, opt):
+                setattr(net.opt, opt, True)
         try:
             net.set_vulkan_device(ncnn.get_default_gpu_index())
         except Exception:
             pass
     else:
         net.opt.use_vulkan_compute = False  # CPU: libvulkan не нужен
-        net.opt.num_threads = 1
+        net.opt.num_threads = max(1, int(threads))
     net.load_param(base + ".param")
     net.load_model(base + ".bin")
     return net
 
 
-def _sr(img: np.ndarray, model: str, device: str = "cpu") -> np.ndarray:
+def _sr(img: np.ndarray, model: str, device: str = "cpu",
+        threads: int = 1) -> np.ndarray:
     """Прогон модели; ncnn ждёт CHW float 0..1."""
     import ncnn
     h, w = img.shape[:2]
     rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB).astype(np.float32) / 255.0
-    net = _net(model, device)
+    net = _net(model, device, threads)
     ex = net.create_extractor()
     ex.input("data", ncnn.Mat(np.ascontiguousarray(rgb.transpose(2, 0, 1))))
     _, out = ex.extract("output")
@@ -160,12 +191,21 @@ def unsharp(img: np.ndarray, amount: float = 0.25,
 
 def upscale(img: np.ndarray, size: int = 256, model: str = DEFAULT_MODEL,
             denoise: bool = True, sharp: float = 0.25,
-            device: str = "auto") -> np.ndarray:
+            device: str = "auto", threads: int = 1) -> np.ndarray:
     """Иконка (вырез, без полей) -> size×size с достройкой деталей.
 
     device: "auto" (GPU если есть Vulkan, иначе CPU), "gpu", "cpu".
     """
-    big = _sr(img, model, pick_device(device))
+    dev = pick_device(device)
+    try:
+        big = _sr(img, model, dev, threads)
+    except Exception as e:                      # noqa: BLE001
+        if dev != "gpu":
+            raise
+        # драйвер Vulkan может упасть на конкретной карте — не роняем
+        # прогон из-за этого, считаем ту же иконку на CPU
+        print(f"GPU не смог ({e}); считаю на CPU", file=sys.stderr)
+        big = _sr(img, model, "cpu", threads)
     out = cv2.resize(big, (size, size), interpolation=cv2.INTER_AREA)
     if denoise:
         out = flat_denoise(out)
