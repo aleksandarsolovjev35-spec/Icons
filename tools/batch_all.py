@@ -67,7 +67,7 @@ def upscale(img: np.ndarray, size: int = 256, unsharp: float = 0.55,
     """
     if algo == "anime":
         import sr_ncnn
-        return sr_ncnn.upscale(img, size=size)
+        return sr_ncnn.upscale(img, size=size, device=SR_DEVICE)
     sr = _sr(algo, 4)
     lab = cv2.cvtColor(img, cv2.COLOR_BGR2LAB)
     big = sr.upsample(cv2.cvtColor(lab[..., 0], cv2.COLOR_GRAY2BGR))
@@ -349,6 +349,9 @@ def corner_box(img: np.ndarray, box, margin: int = 16):
             min(bw - 1, cx1 + er) + wx0, min(bh - 1, cy1 + eb) + wy0)
 
 
+SR_DEVICE = "auto"      # auto | gpu | cpu (ставится в main, читается воркерами)
+
+
 def process_sheet(path: str, outroot: str, nslots: int | None,
                   algo: str, size: int, frame: str | None = None,
                   cut: str = "line", canvas: int = CANVAS) -> dict:
@@ -440,6 +443,10 @@ def main() -> int:
                     help="движок апскейла при --size: anime - Real-ESRGAN "
                          "(по умолчанию, достройка деталей, ~3 c на иконку); "
                          "edsr/fsrcnn - cv2.dnn_superres (мылит)")
+    ap.add_argument("--device", default="auto", choices=["auto", "gpu", "cpu"],
+                    help="где гонять сеть: auto (GPU если есть Vulkan), gpu, "
+                         "cpu. На GPU бери --jobs 1: несколько процессов "
+                         "дерутся за видеопамять")
     ap.add_argument("--frame", default="none",
                     choices=["none"] + sorted(S.VARIANTS),
                     help="рамка-бортик вокруг иконки; по умолчанию none - без рамки. "
@@ -471,6 +478,18 @@ def main() -> int:
                       "realesrgan-ncnn-py — перехожу на EDSR")
                 algo = "edsr"
                 args.smooth = True
+            else:
+                try:
+                    dev = sr_ncnn.pick_device(args.device)
+                except RuntimeError as e:
+                    print(f"{e}\nперехожу на CPU")
+                    dev = "cpu"
+                globals()["SR_DEVICE"] = dev
+                print(f"апскейл: Real-ESRGAN на {'GPU (Vulkan)' if dev == 'gpu' else 'CPU'}")
+                if dev == "gpu" and args.jobs > 1:
+                    print("на GPU ставлю --jobs 1 (иначе процессы дерутся "
+                          "за видеопамять)")
+                    args.jobs = 1
     else:
         algo = "edsr" if args.smooth else "fsrcnn"
     fetch_models.ensure(all_models=args.smooth)      # модели качаются один раз

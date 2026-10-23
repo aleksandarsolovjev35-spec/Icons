@@ -110,6 +110,8 @@ def main() -> int:
     ap.add_argument("--sr", default="anime", choices=["anime", "edsr", "fsrcnn"],
                     help="движок апскейла при --up/--size: anime - Real-ESRGAN "
                          "(по умолчанию), edsr/fsrcnn - cv2.dnn_superres")
+    ap.add_argument("--device", default="auto", choices=["auto", "gpu", "cpu"],
+                    help="GPU через Vulkan (auto - если есть), иначе CPU")
     ap.add_argument("--frame", default="none",
                     help="рамка-бортик: none (по умолчанию), sharp, deep, inset, soft")
     ap.add_argument("--no-frame", action="store_true",
@@ -133,7 +135,7 @@ def main() -> int:
     base = [sys.executable, os.path.join(HERE, "batch_all.py"),
             "--out", args.out, "--jobs", str(args.jobs),
             "--frame", frame, "--size", str(size), "--cut", args.cut,
-            "--sr", args.sr,
+            "--sr", args.sr, "--device", args.device,
             "--canvas", str(args.canvas)]
     if args.slots:
         base += ["--slots", str(args.slots)]

@@ -130,6 +130,18 @@ python3 tools/sr_ncnn.py in.png -o out.png --model realesrgan-x4plus-anime
 Ставится один раз: `pip install ncnn realesrgan-ncnn-py` — веса лежат внутри
 пакета. Если их нет, прогон сам переключится на EDSR и предупредит.
 
+**Видеокарта.** Сеть умеет считать через Vulkan (`--device gpu`), это в
+10–30 раз быстрее CPU. По умолчанию `--device auto`: если Vulkan видит
+видеокарту — берётся она, иначе CPU. На GPU прогон сам ставит `--jobs 1`,
+чтобы несколько процессов не делили видеопамять. Если вместо GPU написано
+«GPU не найден» — на Windows нужен свежий драйвер (Vulkan идёт в комплекте
+с драйвером NVIDIA/AMD/Intel), на Linux — `libvulkan1` и ICD драйвера.
+
+```
+python3 tools/run_all.py --up 256 --device gpu    # явно на видеокарте
+python3 tools/run_all.py --up 256 --device cpu    # явно на процессоре
+```
+
 Почему не `cv2.dnn_superres` (EDSR/FSRCNN): они обучены на фотографиях и на
 иконках размазывают заливки — резкость по лапласиану падала с 920 до 125 при
 149→256. У Real-ESRGAN после апскейла она 700–3500, то есть детальность
