@@ -121,7 +121,8 @@ def available() -> bool:
                for ext in (".param", ".bin"))
 
 
-def _net(model: str, device: str = "auto", threads: int = 1):
+def _net(model: str, device: str = "auto", threads: int = 1,
+         fp16: bool = True):
     import ncnn
     d = models_dir()
     if not d:
@@ -135,11 +136,15 @@ def _net(model: str, device: str = "auto", threads: int = 1):
         _init_vulkan()
         net.opt.use_vulkan_compute = True
         net.opt.num_threads = 1
-        # fp16 на Vulkan: на иконках разницы не видно, а считает быстрее
-        for opt in ("use_fp16_packed", "use_fp16_storage",
-                    "use_fp16_arithmetic"):
+        # fp16 storage/packed ускоряет Vulkan, но АРИФМЕТИКУ в fp16 не
+        # включаем: на картах без аппаратного fp16 (например Radeon RX 580,
+        # Polaris) промежуточные значения переполняются и в кадре остаются
+        # NaN — при конвертации это RuntimeWarning "invalid value in cast".
+        for opt, val in (("use_fp16_packed", fp16),
+                         ("use_fp16_storage", fp16),
+                         ("use_fp16_arithmetic", False)):
             if hasattr(net.opt, opt):
-                setattr(net.opt, opt, True)
+                setattr(net.opt, opt, val)
         try:
             net.set_vulkan_device(ncnn.get_default_gpu_index())
         except Exception:
@@ -153,18 +158,24 @@ def _net(model: str, device: str = "auto", threads: int = 1):
 
 
 def _sr(img: np.ndarray, model: str, device: str = "cpu",
-        threads: int = 1) -> np.ndarray:
-    """Прогон модели; ncnn ждёт CHW float 0..1."""
+        threads: int = 1, fp16: bool = True) -> tuple[np.ndarray, int]:
+    """Прогон модели; ncnn ждёт CHW float 0..1.
+
+    Возвращает (картинка, сколько пикселей пришло как NaN/Inf). Считать
+    такие значения нельзя — заливаем их нулём, а вызывающий код по счётчику
+    понимает, что fp16 на этой карте врёт, и пересчитывает в fp32.
+    """
     import ncnn
-    h, w = img.shape[:2]
     rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB).astype(np.float32) / 255.0
-    net = _net(model, device, threads)
+    net = _net(model, device, threads, fp16)
     ex = net.create_extractor()
     ex.input("data", ncnn.Mat(np.ascontiguousarray(rgb.transpose(2, 0, 1))))
     _, out = ex.extract("output")
     a = np.array(out).transpose(1, 2, 0)
+    bad = int(a.size - np.count_nonzero(np.isfinite(a)))
+    a = np.nan_to_num(a, nan=0.0, posinf=1.0, neginf=0.0)
     return cv2.cvtColor(np.clip(a * 255.0, 0, 255).astype(np.uint8),
-                        cv2.COLOR_RGB2BGR)
+                        cv2.COLOR_RGB2BGR), bad
 
 
 def flat_denoise(img: np.ndarray, limit: float = 12.0,
@@ -191,21 +202,27 @@ def unsharp(img: np.ndarray, amount: float = 0.25,
 
 def upscale(img: np.ndarray, size: int = 256, model: str = DEFAULT_MODEL,
             denoise: bool = True, sharp: float = 0.25,
-            device: str = "auto", threads: int = 1) -> np.ndarray:
+            device: str = "auto", threads: int = 1,
+            fp16: bool = True) -> np.ndarray:
     """Иконка (вырез, без полей) -> size×size с достройкой деталей.
 
     device: "auto" (GPU если есть Vulkan, иначе CPU), "gpu", "cpu".
     """
     dev = pick_device(device)
     try:
-        big = _sr(img, model, dev, threads)
+        big, bad = _sr(img, model, dev, threads, fp16)
+        if bad:
+            # fp16 на этой видеокарте даёт NaN — пересчитываем без него
+            print(f"fp16 дал {bad} битых значений, пересчитываю в fp32",
+                  file=sys.stderr)
+            big, _ = _sr(img, model, dev, threads, fp16=False)
     except Exception as e:                      # noqa: BLE001
         if dev != "gpu":
             raise
         # драйвер Vulkan может упасть на конкретной карте — не роняем
         # прогон из-за этого, считаем ту же иконку на CPU
         print(f"GPU не смог ({e}); считаю на CPU", file=sys.stderr)
-        big = _sr(img, model, "cpu", threads)
+        big, _ = _sr(img, model, "cpu", threads, fp16)
     out = cv2.resize(big, (size, size), interpolation=cv2.INTER_AREA)
     if denoise:
         out = flat_denoise(out)
@@ -221,6 +238,9 @@ def main() -> int:
     ap.add_argument("--model", default=DEFAULT_MODEL, choices=sorted(SCALES))
     ap.add_argument("--sharp", type=float, default=0.25)
     ap.add_argument("--no-denoise", action="store_true")
+    ap.add_argument("--fp32", action="store_true",
+                    help="считать без fp16 (медленнее; если на карте видны "
+                         "чёрные точки или NaN)")
     ap.add_argument("--device", default="auto", choices=["auto", "gpu", "cpu"],
                     help="auto - GPU через Vulkan, если он есть; иначе CPU")
     args = ap.parse_args()
@@ -234,7 +254,7 @@ def main() -> int:
         if img is None:
             raise SystemExit(f"не читается: {src}")
         res = upscale(img, args.size, args.model, not args.no_denoise,
-                      args.sharp, args.device)
+                      args.sharp, args.device, fp16=not args.fp32)
         if args.out and len(args.images) == 1:
             dst = args.out
         else:
