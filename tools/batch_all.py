@@ -124,9 +124,12 @@ def crop_by_sheet_line(img: np.ndarray, box) -> np.ndarray:
 
 
 INNER_DARK = 30     # яркость, ниже которой пиксель считается чёрным фоном
-INNER_MAX = 14      # сколько пикселей внутрь разрешено искать чёрное
 LINE_MIN = 15       # ярче этого - уже не чёрный фон, а линия или рисунок
-SCAN_OUT = 4        # отступ НАРУЖУ от bbox, чтобы начать скан снаружи линии
+LINE_WIN_IN = 4     # на сколько пикселей внутрь от края bbox ищем линию
+LINE_WIN_OUT = 2    # и на сколько наружу (bbox иногда стоит чуть внутри линии)
+LINE_COVER = 0.5    # какую долю полосы должны занимать нейтрально-яркие пиксели
+LINE_EXTRA = 1      # на сколько пикселей режем глубже самой яркой полосы (кромка)
+LINE_BRIGHT = 40    # ярче этого пиксель считается светлым (кандидат в линию)
 
 
 def inner_rect(img: np.ndarray, box) -> tuple[int, int, int, int]:
@@ -152,71 +155,69 @@ def crop_by_inner_edge(img: np.ndarray, box) -> np.ndarray:
 
 
 def _inner_scan(img: np.ndarray, box) -> tuple[int, int, int, int]:
+    """Границы выреза по линии рамки.
+
+    Линия рамки ровная: её яркость почти не меняется вдоль всей стороны
+    (разброс 0.4-2 единицы), и она занимает сторону целиком. У рисунка
+    (серебро, мех, светлое дерево) яркость вдоль полосы гуляет на 18-57,
+    даже если цвет такой же нейтральный.
+
+    Поэтому для каждой стороны смотрим 4 px внутрь и 2 px наружу, берём
+    полосы с низким разбросом яркости и малой хромой, и режем по самой
+    ВНУТРЕННЕЙ такой полосе. Прежний скан «иди внутрь, пока не станет
+    чёрным» уходил в светлый рисунок на 10-11 px и срезал лишнее.
+    """
     x0, y0, x1, y1 = box
     H, W = img.shape[:2]
-    ys = range(y0 + 3, y1 - 2)
-    xs = range(x0 + 3, x1 - 2)
+    xi0, xi1 = max(0, x0 + 4), min(W, x1 - 3)
+    yi0, yi1 = max(0, y0 + 4), min(H, y1 - 3)
 
-    def edge(fixed, step_x, step_y, sx, sy):
-        """Внутренняя кромка линии: идём СНАРУЖИ bbox внутрь.
-
-        Раньше скан начинался ровно на краю bbox, а там уже может быть
-        затемнённая кромка линии (яркость <= INNER_DARK) - скан решал, что
-        граница на месте, и целая линия оставалась в кадре. Поэтому теперь
-        отступаем наружу на SCAN_OUT, сначала пропускаем чёрный фон, ловим
-        саму линию, и только за ней берём первый чёрный пиксель.
-        """
-        x, y = (sx, fixed) if step_x else (fixed, sy)
-        seen = False
-        for _ in range(SCAN_OUT + INNER_MAX):
-            if not (0 <= x < W and 0 <= y < H):
-                return None
-            f = img[y, x].astype(np.int16)
-            bright = float(f.mean())
-            chroma = int(f.max() - f.min())
-            if not seen:
-                if chroma > LINE_MAX_CHROMA:      # до линии рисунок - нечего искать
-                    return None
-                if bright > LINE_MIN:             # линия (серая/белая) найдена
-                    seen = True
-            else:
-                # линию уже прошли, значит предыдущий пиксель - её кромка
-                if chroma > LINE_MAX_CHROMA:      # рисунок вплотную к линии
-                    return (x - step_x, y - step_y)
-                if bright <= INNER_DARK:          # чёрный фон ЗА линией - граница
-                    return (x, y)
-            x += step_x
-            y += step_y
-        return None
-
-    def side(fixed, step_x, step_y, sx, sy, base):
-        """85-й процентиль СМЕЩЕНИЙ от исходного края (не координат).
-
-        Важно: смещение - это сколько отрезать. Для левой и для правой
-        стороны координата растёт в разные стороны, поэтому перцентиль
-        надо брать по смещениям, иначе с одной стороны он выбирал бы
-        вариант «не резать» и линия оставалась в кадре.
-        """
-        vals = []
-        for k in fixed:
-            p = edge(k, step_x, step_y, sx, sy)
-            if p is None:
-                continue
-            coord = p[0] if step_x else p[1]
-            # +1 - сам найденный пиксель кромки, его тоже отрезаем
-            vals.append(abs(coord - base) + 1)
-        if len(vals) < 3:
+    def strip(y=None, x=None):
+        if y is not None:
+            f = img[y, xi0:xi1].astype(np.int16)
+        else:
+            f = img[yi0:yi1, x].astype(np.int16)
+        if f.size == 0:
             return None
-        return int(np.percentile(vals, 85))
+        bright = f.mean(axis=1)
+        chroma = f.max(axis=1) - f.min(axis=1)
+        cov = float(((bright > LINE_BRIGHT) & (chroma <= LINE_MAX_CHROMA)).mean())
+        med = float(np.median(bright))
+        return med, float(np.median(chroma)), cov, float(bright.std())
 
-    left = side(ys, +1, 0, x0 - SCAN_OUT, 0, x0)
-    right = side(ys, -1, 0, x1 + SCAN_OUT, 0, x1)
-    top = side(xs, 0, +1, 0, y0 - SCAN_OUT, y0)
-    bottom = side(xs, 0, -1, 0, y1 + SCAN_OUT, y1)
-    return (max(0, x0 + left) if left is not None else max(0, x0),
-            max(0, y0 + top) if top is not None else max(0, y0),
-            min(W, x1 - right + 1) if right is not None else min(W, x1 + 1),
-            min(H, y1 - bottom + 1) if bottom is not None else min(H, y1 + 1))
+    def line(axis, base, limit, inward):
+        """Самая яркая нейтральная полоса возле края - это линия рамки.
+
+        Линия проходит по всей стороне слота, поэтому она самая яркая
+        полоса в окне у края. Дальше неё не идём: светлый рисунок под
+        линией (серебро, мех, дерево) тоже нейтральный, и старый скан
+        принимал его за продолжение линии, срезая на 10-11 px лишнего.
+        """
+        best = None
+        for c in range(base - LINE_WIN_IN, base + LINE_WIN_OUT + 1):
+            if not (0 <= c < limit):
+                continue
+            v = strip(y=c) if axis == 'y' else strip(x=c)
+            if v is None:
+                continue
+            bright, chroma, cov, _ = v
+            if (bright > LINE_BRIGHT and chroma <= LINE_MAX_CHROMA
+                    and cov >= LINE_COVER):
+                if best is None or bright > best[1]:
+                    best = (c, bright)
+        if best is None:
+            return None
+        return best[0] + inward * LINE_EXTRA
+
+    left = line('x', x0, W, +1)
+    right = line('x', x1, W, -1)
+    top = line('y', y0, H, +1)
+    bottom = line('y', y1, H, -1)
+    lx = left + 1 if left is not None else max(0, x0)
+    ty = top + 1 if top is not None else max(0, y0)
+    rx = right if right is not None else min(W, x1 + 1)
+    by = bottom if bottom is not None else min(H, y1 + 1)
+    return (lx, ty, max(lx + 1, rx), max(ty + 1, by))
 
 
 CANVAS = 151        # итоговый кадр: мелкие иконки добираем фоном до этого размера
