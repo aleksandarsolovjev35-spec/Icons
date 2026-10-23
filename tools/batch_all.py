@@ -124,7 +124,9 @@ def crop_by_sheet_line(img: np.ndarray, box) -> np.ndarray:
 
 
 INNER_DARK = 30     # яркость, ниже которой пиксель считается чёрным фоном
-INNER_MAX = 12      # сколько пикселей внутрь разрешено искать чёрное
+INNER_MAX = 14      # сколько пикселей внутрь разрешено искать чёрное
+LINE_MIN = 15       # ярче этого - уже не чёрный фон, а линия или рисунок
+SCAN_OUT = 4        # отступ НАРУЖУ от bbox, чтобы начать скан снаружи линии
 
 
 def inner_rect(img: np.ndarray, box) -> tuple[int, int, int, int]:
@@ -155,35 +157,66 @@ def _inner_scan(img: np.ndarray, box) -> tuple[int, int, int, int]:
     ys = range(y0 + 3, y1 - 2)
     xs = range(x0 + 3, x1 - 2)
 
-    def offset(fixed, step_x, step_y, sx, sy):
-        for d in range(INNER_MAX):
-            x, y = sx + step_x * d, sy + step_y * d
-            if step_x:
-                y = fixed
-            else:
-                x = fixed
-            if not (0 <= x < W and 0 <= y < H):
-                return 0
-            f = img[y, x].astype(np.int16)
-            if f.max() - f.min() > LINE_MAX_CHROMA:
-                return max(0, d - 1)
-            if f.mean() <= INNER_DARK:
-                return d
-        return 0
+    def edge(fixed, step_x, step_y, sx, sy):
+        """Внутренняя кромка линии: идём СНАРУЖИ bbox внутрь.
 
-    def side(fixed, step_x, step_y, sx, sy):
-        vals = [offset(k, step_x, step_y, sx, sy) for k in fixed]
-        vals = [v for v in vals if v > 0]
+        Раньше скан начинался ровно на краю bbox, а там уже может быть
+        затемнённая кромка линии (яркость <= INNER_DARK) - скан решал, что
+        граница на месте, и целая линия оставалась в кадре. Поэтому теперь
+        отступаем наружу на SCAN_OUT, сначала пропускаем чёрный фон, ловим
+        саму линию, и только за ней берём первый чёрный пиксель.
+        """
+        x, y = (sx, fixed) if step_x else (fixed, sy)
+        seen = False
+        for _ in range(SCAN_OUT + INNER_MAX):
+            if not (0 <= x < W and 0 <= y < H):
+                return None
+            f = img[y, x].astype(np.int16)
+            bright = float(f.mean())
+            chroma = int(f.max() - f.min())
+            if not seen:
+                if chroma > LINE_MAX_CHROMA:      # до линии рисунок - нечего искать
+                    return None
+                if bright > LINE_MIN:             # линия (серая/белая) найдена
+                    seen = True
+            else:
+                # линию уже прошли, значит предыдущий пиксель - её кромка
+                if chroma > LINE_MAX_CHROMA:      # рисунок вплотную к линии
+                    return (x - step_x, y - step_y)
+                if bright <= INNER_DARK:          # чёрный фон ЗА линией - граница
+                    return (x, y)
+            x += step_x
+            y += step_y
+        return None
+
+    def side(fixed, step_x, step_y, sx, sy, base):
+        """85-й процентиль СМЕЩЕНИЙ от исходного края (не координат).
+
+        Важно: смещение - это сколько отрезать. Для левой и для правой
+        стороны координата растёт в разные стороны, поэтому перцентиль
+        надо брать по смещениям, иначе с одной стороны он выбирал бы
+        вариант «не резать» и линия оставалась в кадре.
+        """
+        vals = []
+        for k in fixed:
+            p = edge(k, step_x, step_y, sx, sy)
+            if p is None:
+                continue
+            coord = p[0] if step_x else p[1]
+            # +1 - сам найденный пиксель кромки, его тоже отрезаем
+            vals.append(abs(coord - base) + 1)
         if len(vals) < 3:
-            return 0
+            return None
         return int(np.percentile(vals, 85))
 
-    left = side(ys, +1, 0, x0, 0)
-    right = side(ys, -1, 0, x1, 0)
-    top = side(xs, 0, +1, 0, y0)
-    bottom = side(xs, 0, -1, 0, y1)
-    return (max(0, x0 + left), max(0, y0 + top),
-            min(W, x1 - right + 1), min(H, y1 - bottom + 1))
+    left = side(ys, +1, 0, x0 - SCAN_OUT, 0, x0)
+    right = side(ys, -1, 0, x1 + SCAN_OUT, 0, x1)
+    top = side(xs, 0, +1, 0, y0 - SCAN_OUT, y0)
+    bottom = side(xs, 0, -1, 0, y1 + SCAN_OUT, y1)
+    return (max(0, x0 + left) if left is not None else max(0, x0),
+            max(0, y0 + top) if top is not None else max(0, y0),
+            min(W, x1 - right + 1) if right is not None else min(W, x1 + 1),
+            min(H, y1 - bottom + 1) if bottom is not None else min(H, y1 + 1))
 
 
 CANVAS = 151        # итоговый кадр: мелкие иконки добираем фоном до этого размера
