@@ -42,6 +42,7 @@ import clean_icon as C            # noqa: E402
 import detect_frames as D         # noqa: E402
 import fetch_models               # noqa: E402
 import style_frame as S           # noqa: E402
+from progress import Progress      # noqa: E402
 
 MODELS = os.path.join(HERE, "models")
 SR = {}
@@ -521,6 +522,9 @@ def main() -> int:
 
     rows = []
     t0 = time.time()
+    total_icons = 0
+    prog = Progress(len(sheets))
+    prog.tick(0, 0, note="старт")
     if args.jobs > 1:
         from multiprocessing import Pool
         with Pool(args.jobs) as pool:
@@ -528,15 +532,20 @@ def main() -> int:
                     _worker, [(p, args.out, args.slots, algo, args.size, frame,
                                args.cut, args.canvas) for p in sheets]):
                 rows.append(res)
-                print(f"  [{len(rows)}/{len(sheets)}] {res['sheet']}  "
-                      f"{res.get('slots', 0)} шт  {res.get('sec', 0)} c")
+                total_icons += res.get("slots", 0)
+                prog.tick(len(rows), total_icons,
+                          note=f"{res['sheet']} · {res.get('slots', 0)} шт "
+                               f"за {res.get('sec', 0)} c")
     else:
         for p in sheets:
             res = process_sheet(p, args.out, args.slots, algo, args.size, frame,
                                 args.cut, args.canvas)
             rows.append(res)
-            print(f"  [{len(rows)}/{len(sheets)}] {res['sheet']}  "
-                  f"{res.get('slots', 0)} шт  {res.get('sec', 0)} c")
+            total_icons += res.get("slots", 0)
+            prog.tick(len(rows), total_icons,
+                      note=f"{res['sheet']} · {res.get('slots', 0)} шт "
+                           f"за {res.get('sec', 0)} c")
+    prog.close(total_icons)
 
     rows.sort(key=lambda r: r["sheet"])
     os.makedirs(os.path.join(ROOT, "samples"), exist_ok=True)
@@ -549,7 +558,7 @@ def main() -> int:
             w.writerow({k: r.get(k, "") for k in w.fieldnames})
 
     total = sum(r.get("slots", 0) for r in rows)
-    print(f"\nготово: {total} иконок с {len(rows)} листов за "
+    print(f"готово: {total} иконок с {len(rows)} листов за "
           f"{(time.time() - t0) / 60:.1f} мин -> {args.out}")
     print(f"отчёт: {csv_path}")
     return 0
