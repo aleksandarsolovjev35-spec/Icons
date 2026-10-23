@@ -74,7 +74,7 @@ set "RC=%ERRORLEVEL%"
 
 echo.
 if "%RC%"=="0" (
-    echo Done. Icons are in the "icons_256" folder.
+    echo Done. Look in the output folder printed above.
 ) else (
     echo Failed with exit code %RC%.
     echo See the messages above.
