@@ -175,15 +175,25 @@ def _sr(img: np.ndarray, model: str, device: str = "cpu",
         threads: int = 1, fp16: bool = True) -> tuple[np.ndarray, int]:
     """Прогон модели; ncnn ждёт CHW float 0..1.
 
+    Картинку подаём ТОЛЬКО через `Mat.from_pixels`: он сам раскладывает
+    HWC uint8 в CHW. Если собрать Mat из numpy-массива вручную
+    (`ncnn.Mat(rgb.transpose(2,0,1))`), ncnn трактует его как уже готовый
+    Mat с шагом в 4 байта — на выходе получается мусор (на 148x148 сеть
+    отдавала почти чёрный кадр, а на 144x144 работала). Ошибка тихая:
+    исключения нет, картинка просто неправильная.
+
     Возвращает (картинка, сколько пикселей пришло как NaN/Inf). Считать
     такие значения нельзя — заливаем их нулём, а вызывающий код по счётчику
     понимает, что fp16 на этой карте врёт, и пересчитывает в fp32.
     """
     import ncnn
-    rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB).astype(np.float32) / 255.0
+    src = np.ascontiguousarray(img)
+    h, w = src.shape[:2]
     net = _net(model, device, threads, fp16)
     ex = net.create_extractor()
-    ex.input("data", ncnn.Mat(np.ascontiguousarray(rgb.transpose(2, 0, 1))))
+    m = ncnn.Mat.from_pixels(src, ncnn.Mat.PixelType.PIXEL_BGR2RGB, w, h)
+    m.substract_mean_normalize([0.0, 0.0, 0.0], [1 / 255.0] * 3)
+    ex.input("data", m)
     _, out = ex.extract("output")
     a = np.array(out).transpose(1, 2, 0)
     bad = int(a.size - np.count_nonzero(np.isfinite(a)))

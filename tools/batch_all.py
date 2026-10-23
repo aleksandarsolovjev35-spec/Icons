@@ -42,6 +42,7 @@ import clean_icon as C            # noqa: E402
 import detect_frames as D         # noqa: E402
 import fetch_models               # noqa: E402
 import style_frame as S           # noqa: E402
+import frame_grid as FG            # noqa: E402
 from progress import Progress      # noqa: E402
 
 MODELS = os.path.join(HERE, "models")
@@ -243,10 +244,15 @@ def _inner_scan(img: np.ndarray, box) -> tuple[int, int, int, int]:
         Тогда в окно поиска линия не попадает, и прежний код откатывался на
         край box - линия оставалась ВНУТРИ выреза.
 
-        Запасной проход идёт от края box внутрь по чёрному фону и
-        останавливается на первой НЕ чёрной полосе: если это линия (ровная,
-        светлая, нейтральная) - режем сразу за ней; если рисунок - не
-        трогаем, чтобы не срезать иконку.
+        Обратный случай: box стоит на 5 px ВНУТРЬ линии (тот же лист, слот 3:
+        линия на x=547, box - x0=552). Тогда вырез начинался по краю box и
+        срезал пару пикселей самой иконки (кастрюля начинается с x=549).
+
+        Поэтому два запасных прохода:
+          1) внутрь по чёрному фону - если линия осталась в кадре;
+          2) наружу по чёрному фону - если box залез внутрь линии.
+        Оба срабатывают только на ровную светлую нейтральную полосу на всю
+        сторону; рисунок у края так не выглядит, и его не трогаем.
         """
         found = line(axis, base, limit, inward)
         if found is not None:
@@ -270,6 +276,47 @@ def _inner_scan(img: np.ndarray, box) -> tuple[int, int, int, int]:
                 seen = True
                 continue
             return None                  # светлое, но не линия - не режем
+
+        # линия оказалась НАРУЖУ края box: box стоит внутри рамки.
+        # Между линией и краем box должен быть настоящий тёмный фон
+        # (медиана <= 20 хотя бы у двух полос) - иначе это не рамка,
+        # а мягкая тень иконки, и расширять вырез нельзя.
+        gap = 0
+        for step in range(1, LINE_DEEP + 1):
+            c = base - inward * step
+            if not (0 <= c < limit):
+                return None
+            v = strip(y=c) if axis == 'y' else strip(x=c)
+            if v is None:
+                return None
+            bright, chroma, cov, nmed, nstd, ncov = v
+            if bright < 20:              # чёрный фон между box и линией
+                gap += 1
+                continue
+            if bright < LINE_BRIGHT:     # мягкая тень, не фон - не считаем
+                continue
+            is_line = (chroma <= LINE_MAX_CHROMA and cov >= LINE_DEEP_COVER
+                       and nstd <= LINE_DEEP_STD)
+            if not (is_line and gap >= 2):
+                return None
+            # линия снаружи найдена. Расширяемся не до неё, а ровно на
+            # столько, на сколько за краем box продолжается рисунок: между
+            # иконкой и рамкой часто есть чёрная кайма, и брать её целиком
+            # значит потерять «иконка заполняет кадр».
+            lo, hi = (c + 1, base) if inward > 0 else (base, c)
+            content = []
+            for cc in range(lo, hi):
+                slab = (img[yi0:yi1, cc] if axis == 'x'
+                        else img[cc, xi0:xi1])
+                if not slab.size:
+                    continue
+                g = slab.astype(np.int16).mean(axis=1)
+                if float((g > 60).mean()) >= 0.03:   # тут реально рисунок
+                    content.append(cc)
+            if content:
+                edge = min(content) if inward > 0 else max(content)
+                return edge - inward     # общий код даст edge / edge + 1
+            return None                  # за краем только чёрная кайма
         return None
 
     left = find('x', x0, W, +1)
@@ -398,6 +445,25 @@ SR_DEVICE = os.environ.get("SR_DEVICE", "auto")
 SR_THREADS = int(os.environ.get("SR_THREADS", "1"))
 
 
+def _merge_grid(img: np.ndarray, rect, g) -> tuple[int, int, int, int]:
+    """Собрать вырез: стороны из решётки, а где линии нет — из старого скана.
+
+    Решётка даёт точную позицию линии, но на некоторых листах рамка есть не
+    со всех сторон (например сверху лист обрезан). Для таких сторон
+    оставляем результат локального скана.
+    """
+    H, W = img.shape[:2]
+    l = g[0] if g[0] is not None else rect[0]
+    t = g[1] if g[1] is not None else rect[1]
+    r = g[2] if g[2] is not None else rect[2]
+    b = g[3] if g[3] is not None else rect[3]
+    l, t = max(0, int(l)), max(0, int(t))
+    r, b = min(W, int(r)), min(H, int(b))
+    if r - l < 8 or b - t < 8:
+        return rect
+    return (l, t, r, b)
+
+
 def process_sheet(path: str, outroot: str, nslots: int | None,
                   algo: str, size: int, frame: str | None = None,
                   cut: str = "line", canvas: int = CANVAS) -> dict:
@@ -410,6 +476,14 @@ def process_sheet(path: str, outroot: str, nslots: int | None,
     if not boxes:
         return {"sheet": path, "slots": 0, "error": "рамки не найдены"}
     mine = boxes if nslots is None else boxes[:nslots]
+    # Решётка листа: позиции линий считаются сразу по всем слотам, поэтому
+    # промах отдельного bbox на 5-12 px больше не влияет на вырез.
+    grid = None
+    if cut == "inner":
+        try:
+            grid = FG.slot_rects(img, mine)
+        except Exception:                        # noqa: BLE001
+            grid = None
 
     # Порядок важен: сначала иконка (вырез -> чистка -> апскейл), и только
     # потом рамка - на готовом кадре, в пикселях этого кадра.
@@ -428,6 +502,8 @@ def process_sheet(path: str, outroot: str, nslots: int | None,
         rect = None
         if cut == "inner":
             rect = _inner_scan(img, box)              # по внутренней стороне рамки
+            if grid and k < len(grid) and grid[k]:
+                rect = _merge_grid(img, rect, grid[k])
             crop = img[rect[1]:rect[3], rect[0]:rect[2]]
         elif cut == "corner":
             cb = corner_box(img, box)
