@@ -42,6 +42,7 @@ import clean_icon as C            # noqa: E402
 import detect_frames as D         # noqa: E402
 import fetch_models               # noqa: E402
 import style_frame as S           # noqa: E402
+import frame_struct as FS          # noqa: E402
 from progress import Progress      # noqa: E402
 
 MODELS = os.path.join(HERE, "models")
@@ -136,6 +137,9 @@ INNER_DARK = 30     # яркость, ниже которой пиксель с�
 LINE_MIN = 15       # ярче этого - уже не чёрный фон, а линия или рисунок
 LINE_WIN_IN = 4     # на сколько пикселей внутрь от края bbox ищем линию
 LINE_WIN_OUT = 2    # и на сколько наружу (bbox иногда стоит чуть внутри линии)
+LINE_DEEP = 12      # запасной проход, если линия оказалась глубже окна
+LINE_DEEP_COVER = 0.6   # линия в запасном проходе занимает большую часть стороны
+LINE_DEEP_STD = 14      # и ровная вдоль стороны (рисунок гуляет на 20-60)
 LINE_COVER = 0.5    # какую долю полосы должны занимать нейтрально-яркие пиксели
 LINE_EXTRA = 1      # на сколько пикселей режем глубже самой яркой полосы (кромка)
 LINE_COVER_N = 0.25 # линия может быть частично перекрыта цветным рисунком
@@ -232,10 +236,93 @@ def _inner_scan(img: np.ndarray, box) -> tuple[int, int, int, int]:
             return None
         return best[0] + inward * LINE_EXTRA
 
-    left = line('x', x0, W, +1)
-    right = line('x', x1, W, -1)
-    top = line('y', y0, H, +1)
-    bottom = line('y', y1, H, -1)
+    def find(axis, base, limit, inward):
+        """Линия у края, с запасным проходом глубже по чёрному фону.
+
+        Детектор рамки иногда ставит box на 5-6 px НАРУЖУ линии (кейс
+        `RPG Loot Icons 14 Part 2`, слот 3: линия на x=698, а box - x1=703).
+        Тогда в окно поиска линия не попадает, и прежний код откатывался на
+        край box - линия оставалась ВНУТРИ выреза.
+
+        Обратный случай: box стоит на 5 px ВНУТРЬ линии (тот же лист, слот 3:
+        линия на x=547, box - x0=552). Тогда вырез начинался по краю box и
+        срезал пару пикселей самой иконки (кастрюля начинается с x=549).
+
+        Поэтому два запасных прохода:
+          1) внутрь по чёрному фону - если линия осталась в кадре;
+          2) наружу по чёрному фону - если box залез внутрь линии.
+        Оба срабатывают только на ровную светлую нейтральную полосу на всю
+        сторону; рисунок у края так не выглядит, и его не трогаем.
+        """
+        found = line(axis, base, limit, inward)
+        if found is not None:
+            return found
+        seen = False                 # уже встретили линию
+        for step in range(1, LINE_DEEP + 1):
+            c = base + inward * step
+            if not (0 <= c < limit):
+                return None
+            v = strip(y=c) if axis == 'y' else strip(x=c)
+            if v is None:
+                return None
+            bright, chroma, cov, nmed, nstd, ncov = v
+            if bright < LINE_BRIGHT:     # чёрный фон
+                if seen:                 # линия кончилась - режем здесь
+                    return c
+                continue                 # ещё идём по фону
+            is_line = (chroma <= LINE_MAX_CHROMA and cov >= LINE_DEEP_COVER
+                       and nstd <= LINE_DEEP_STD)
+            if is_line:                  # линия может быть в 2-3 px толщиной
+                seen = True
+                continue
+            return None                  # светлое, но не линия - не режем
+
+        # линия оказалась НАРУЖУ края box: box стоит внутри рамки.
+        # Между линией и краем box должен быть настоящий тёмный фон
+        # (медиана <= 20 хотя бы у двух полос) - иначе это не рамка,
+        # а мягкая тень иконки, и расширять вырез нельзя.
+        gap = 0
+        for step in range(1, LINE_DEEP + 1):
+            c = base - inward * step
+            if not (0 <= c < limit):
+                return None
+            v = strip(y=c) if axis == 'y' else strip(x=c)
+            if v is None:
+                return None
+            bright, chroma, cov, nmed, nstd, ncov = v
+            if bright < 20:              # чёрный фон между box и линией
+                gap += 1
+                continue
+            if bright < LINE_BRIGHT:     # мягкая тень, не фон - не считаем
+                continue
+            is_line = (chroma <= LINE_MAX_CHROMA and cov >= LINE_DEEP_COVER
+                       and nstd <= LINE_DEEP_STD)
+            if not (is_line and gap >= 2):
+                return None
+            # линия снаружи найдена. Расширяемся не до неё, а ровно на
+            # столько, на сколько за краем box продолжается рисунок: между
+            # иконкой и рамкой часто есть чёрная кайма, и брать её целиком
+            # значит потерять «иконка заполняет кадр».
+            lo, hi = (c + 1, base) if inward > 0 else (base, c)
+            content = []
+            for cc in range(lo, hi):
+                slab = (img[yi0:yi1, cc] if axis == 'x'
+                        else img[cc, xi0:xi1])
+                if not slab.size:
+                    continue
+                g = slab.astype(np.int16).mean(axis=1)
+                if float((g > 60).mean()) >= 0.03:   # тут реально рисунок
+                    content.append(cc)
+            if content:
+                edge = min(content) if inward > 0 else max(content)
+                return edge - inward     # общий код даст edge / edge + 1
+            return None                  # за краем только чёрная кайма
+        return None
+
+    left = find('x', x0, W, +1)
+    right = find('x', x1, W, -1)
+    top = find('y', y0, H, +1)
+    bottom = find('y', y1, H, -1)
     lx = left + 1 if left is not None else max(0, x0)
     ty = top + 1 if top is not None else max(0, y0)
     rx = right if right is not None else min(W, x1 + 1)
@@ -358,6 +445,25 @@ SR_DEVICE = os.environ.get("SR_DEVICE", "auto")
 SR_THREADS = int(os.environ.get("SR_THREADS", "1"))
 
 
+def _grid_crop(img: np.ndarray, rect, frame) -> tuple[int, int, int, int] | None:
+    """Вырез по найденной рамке.
+
+    `frame` — прямоугольник рамки (по центрам линий). Режем не по ней самой,
+    а сразу за последним пикселем линии (`frame_struct.crop_rect`): толщина
+    линии 1-3 px, поэтому фиксированный отступ то оставлял хвост линии в
+    кадре, то срезал край рисунка.
+    """
+    if frame is None:
+        return None
+    c = FS.crop_rect(img, frame)
+    H, W = img.shape[:2]
+    l, t = max(0, int(c[0])), max(0, int(c[1]))
+    r, b = min(W, int(c[2]) + 1), min(H, int(c[3]) + 1)
+    if r - l < 8 or b - t < 8:
+        return None
+    return (l, t, r, b)
+
+
 def process_sheet(path: str, outroot: str, nslots: int | None,
                   algo: str, size: int, frame: str | None = None,
                   cut: str = "line", canvas: int = CANVAS) -> dict:
@@ -370,6 +476,15 @@ def process_sheet(path: str, outroot: str, nslots: int | None,
     if not boxes:
         return {"sheet": path, "slots": 0, "error": "рамки не найдены"}
     mine = boxes if nslots is None else boxes[:nslots]
+    # Рамка ищется по структуре листа сразу для всех слотов: палитра оттенков
+    # рамки, размер рамок листа, пары сторон ровно по этому размеру. Поэтому
+    # промах отдельного bbox на 5-12 px больше не влияет на вырез.
+    grid = None
+    if cut == "inner":
+        try:
+            grid, _size, _shades = FS.sheet_rects(img, mine)
+        except Exception:                        # noqa: BLE001
+            grid = None
 
     # Порядок важен: сначала иконка (вырез -> чистка -> апскейл), и только
     # потом рамка - на готовом кадре, в пикселях этого кадра.
@@ -384,10 +499,19 @@ def process_sheet(path: str, outroot: str, nslots: int | None,
     os.makedirs(outdir, exist_ok=True)
 
     made, noise_before, noise_after = 0, 0.0, 0.0
+    by_frame, by_scan = 0, 0        # кем найден вырез: рамкой или старым сканом
+    frame_px = None                 # измеренный размер рамок этого листа
     for k, box in enumerate(mine):
         rect = None
         if cut == "inner":
-            rect = _inner_scan(img, box)              # по внутренней стороне рамки
+            # основной путь — рамка; если её не нашли, старый локальный скан
+            g = grid[k] if grid and k < len(grid) else None
+            rect = _grid_crop(img, None, g)
+            if rect is not None:
+                by_frame += 1
+            else:
+                rect = _inner_scan(img, box)
+                by_scan += 1
             crop = img[rect[1]:rect[3], rect[0]:rect[2]]
         elif cut == "corner":
             cb = corner_box(img, box)
@@ -424,9 +548,16 @@ def process_sheet(path: str, outroot: str, nslots: int | None,
         noise_after += C.fill_noise(clean)
         made += 1
 
+    if grid is not None and cut == "inner":
+        try:
+            frame_px = f"{_size[0]}x{_size[1]}" if _size else ""
+        except NameError:
+            frame_px = ""
     dt = time.time() - t0
     return {"sheet": os.path.relpath(path, ROOT), "folder": folder,
             "slots": made,
+            "by_frame": by_frame, "by_scan": by_scan,
+            "frame_px": frame_px or "",
             "noise_before": round(noise_before / max(made, 1), 2),
             "noise_after": round(noise_after / max(made, 1), 2),
             "sec": round(dt, 1)}
@@ -552,6 +683,7 @@ def main() -> int:
     csv_path = os.path.join(ROOT, "samples", "batch_summary.csv")
     with open(csv_path, "w", newline="", encoding="utf-8") as f:
         w = csv.DictWriter(f, fieldnames=["sheet", "folder", "slots",
+                                          "by_frame", "by_scan", "frame_px",
                                           "noise_before", "noise_after", "sec"])
         w.writeheader()
         for r in rows:
@@ -560,6 +692,12 @@ def main() -> int:
     total = sum(r.get("slots", 0) for r in rows)
     print(f"готово: {total} иконок с {len(rows)} листов за "
           f"{(time.time() - t0) / 60:.1f} мин -> {args.out}")
+    if args.cut == "inner":
+        fr = sum(r.get("by_frame", 0) for r in rows)
+        sc = sum(r.get("by_scan", 0) for r in rows)
+        if fr or sc:
+            print(f"рамка: {fr} слотов по структуре листа, "
+                  f"{sc} запасным локальным сканом")
     print(f"отчёт: {csv_path}")
     return 0
 
