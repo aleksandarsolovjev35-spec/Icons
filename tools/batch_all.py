@@ -42,7 +42,7 @@ import clean_icon as C            # noqa: E402
 import detect_frames as D         # noqa: E402
 import fetch_models               # noqa: E402
 import style_frame as S           # noqa: E402
-import frame_grid as FG            # noqa: E402
+import frame_struct as FS          # noqa: E402
 from progress import Progress      # noqa: E402
 
 MODELS = os.path.join(HERE, "models")
@@ -445,22 +445,22 @@ SR_DEVICE = os.environ.get("SR_DEVICE", "auto")
 SR_THREADS = int(os.environ.get("SR_THREADS", "1"))
 
 
-def _merge_grid(img: np.ndarray, rect, g) -> tuple[int, int, int, int]:
-    """Собрать вырез: стороны из решётки, а где линии нет — из старого скана.
+def _grid_crop(img: np.ndarray, rect, frame) -> tuple[int, int, int, int] | None:
+    """Вырез по найденной рамке.
 
-    Решётка даёт точную позицию линии, но на некоторых листах рамка есть не
-    со всех сторон (например сверху лист обрезан). Для таких сторон
-    оставляем результат локального скана.
+    `frame` — прямоугольник рамки (по центрам линий). Режем не по ней самой,
+    а сразу за последним пикселем линии (`frame_struct.crop_rect`): толщина
+    линии 1-3 px, поэтому фиксированный отступ то оставлял хвост линии в
+    кадре, то срезал край рисунка.
     """
+    if frame is None:
+        return None
+    c = FS.crop_rect(img, frame)
     H, W = img.shape[:2]
-    l = g[0] if g[0] is not None else rect[0]
-    t = g[1] if g[1] is not None else rect[1]
-    r = g[2] if g[2] is not None else rect[2]
-    b = g[3] if g[3] is not None else rect[3]
-    l, t = max(0, int(l)), max(0, int(t))
-    r, b = min(W, int(r)), min(H, int(b))
+    l, t = max(0, int(c[0])), max(0, int(c[1]))
+    r, b = min(W, int(c[2]) + 1), min(H, int(c[3]) + 1)
     if r - l < 8 or b - t < 8:
-        return rect
+        return None
     return (l, t, r, b)
 
 
@@ -476,12 +476,13 @@ def process_sheet(path: str, outroot: str, nslots: int | None,
     if not boxes:
         return {"sheet": path, "slots": 0, "error": "рамки не найдены"}
     mine = boxes if nslots is None else boxes[:nslots]
-    # Решётка листа: позиции линий считаются сразу по всем слотам, поэтому
+    # Рамка ищется по структуре листа сразу для всех слотов: палитра оттенков
+    # рамки, размер рамок листа, пары сторон ровно по этому размеру. Поэтому
     # промах отдельного bbox на 5-12 px больше не влияет на вырез.
     grid = None
     if cut == "inner":
         try:
-            grid = FG.slot_rects(img, mine)
+            grid, _size, _shades = FS.sheet_rects(img, mine)
         except Exception:                        # noqa: BLE001
             grid = None
 
@@ -501,9 +502,11 @@ def process_sheet(path: str, outroot: str, nslots: int | None,
     for k, box in enumerate(mine):
         rect = None
         if cut == "inner":
-            rect = _inner_scan(img, box)              # по внутренней стороне рамки
-            if grid and k < len(grid) and grid[k]:
-                rect = _merge_grid(img, rect, grid[k])
+            # основной путь — рамка; если её не нашли, старый локальный скан
+            g = grid[k] if grid and k < len(grid) else None
+            rect = _grid_crop(img, None, g)
+            if rect is None:
+                rect = _inner_scan(img, box)
             crop = img[rect[1]:rect[3], rect[0]:rect[2]]
         elif cut == "corner":
             cb = corner_box(img, box)

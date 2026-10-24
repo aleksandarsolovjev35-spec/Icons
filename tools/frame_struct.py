@@ -71,29 +71,36 @@ def _runs(mask_row: np.ndarray, min_len: int, gap: int = GAP):
 
 
 def palette(img: np.ndarray, max_shades: int = 24) -> list[np.ndarray]:
-    """Оттенки рамки на этом листе: список средних цветов (RGB)."""
+    """Оттенки рамки на этом листе: список средних цветов (RGB).
+
+    Линия рамки — единственное, что даёт сильный отклик top-hat (тонкая
+    светлая полоса на чёрном). Берём те строки и столбцы, где отклик
+    большой, и собираем их цвета — это и есть «набор оттенков рамки» данного
+    листа. Стоит десятые доли секунды, потому что не перебирает пробеги
+    питоновскими циклами.
+    """
+    from frame_rect import tophat
+    h, v = tophat(img)
     f = img.astype(np.float32)
-    br = f.mean(axis=2)
     chroma = f.max(axis=2) - f.min(axis=2)
-    gray = (br >= GRAY_MIN) & (chroma <= MAX_CHROMA)
     colors: list[np.ndarray] = []
-    H, W = gray.shape
-    # горизонтальные ровные отрезки
-    for y in range(H):
-        for a, b in _runs(gray[y], RUN_MIN):
-            seg = f[y, a:b + 1]
-            if float(seg.mean(axis=0).max() - seg.mean(axis=0).min()) > MAX_CHROMA:
+    for resp, arr in ((h, f), (v.T, np.transpose(f, (1, 0, 2)))):
+        ch = chroma if arr is f else chroma.T
+        for k in range(resp.shape[0]):
+            row = resp[k]
+            strong = np.flatnonzero(row >= 25)
+            if strong.size < RUN_MIN * 0.5:
                 continue
-            if float(br[y, a:b + 1].std()) > RUN_FLAT:
+            seg = arr[k, strong]
+            chs = ch[k, strong]
+            seg = seg[chs <= MAX_CHROMA]
+            if seg.shape[0] < RUN_MIN * 0.3:
                 continue
-            colors.append(np.median(seg, axis=0))
-    # вертикальные
-    for x in range(W):
-        for a, b in _runs(gray[:, x], RUN_MIN):
-            seg = f[a:b + 1, x]
-            if float(br[a:b + 1, x].std()) > RUN_FLAT:
+            if float(np.std(seg.mean(axis=1))) > RUN_FLAT * 2:
                 continue
             colors.append(np.median(seg, axis=0))
+    if not colors:
+        return []
     return _cluster_colors(colors, max_shades)
 
 
@@ -429,6 +436,58 @@ def sheet_size(img: np.ndarray, boxes) -> tuple:
     return _sheet_size(img, boxes, hs, vs)
 
 
+def peaks_near(img, box, reach: int = 26, th=None):
+    """Пики top-hat рядом со слотом: (x-координаты, y-координаты)."""
+    from frame_rect import tophat
+    h, v = th if th is not None else tophat(img)
+    x0, y0, x1, y1 = (int(t) for t in box)
+    H, W = h.shape
+    ay0, ay1 = max(0, y0 - reach), min(H, y1 + reach + 1)
+    ax0, ax1 = max(0, x0 - reach), min(W, x1 + reach + 1)
+    pv = np.percentile(v[ay0:ay1, ax0:ax1], 75, axis=0)
+    ph = np.percentile(h[ay0:ay1, ax0:ax1], 75, axis=1)
+    xs = [ax0 + int(i) for i in np.flatnonzero(pv >= 10)]
+    ys = [ay0 + int(i) for i in np.flatnonzero(ph >= 10)]
+    return xs, ys
+
+
+def _pair(vals, size, edge_lo, edge_hi, lo_a, hi_a):
+    """Пара пиков с расстоянием ровно `size`, ближайшая к краям слота."""
+    best = None
+    for a in vals:
+        if not (lo_a <= a <= hi_a):
+            continue
+        for b in vals:
+            if b <= a:
+                continue
+            d = abs((b - a) - size)
+            if d > 3:
+                continue
+            score = 2.0 * d + 0.25 * (abs(a - edge_lo) + abs(b - edge_hi))
+            if best is None or score < best[0]:
+                best = (score, a, b)
+    return None if best is None else (best[1], best[2])
+
+
+def locate(img: np.ndarray, box, size, peaks=None):
+    """Рамка слота: пара сторон ровно по размеру рамок листа.
+
+    Размер рамок на листе постоянный (измерено), поэтому стороны ищутся не
+    по одной, а ПАРОЙ с расстоянием `size`. Это убирает промах на 1-2 px:
+    раньше сторона могла встать на соседний пик, и линия попадала в вырез.
+    """
+    if not size or not size[0] or not size[1]:
+        return None
+    W, H = int(size[0]), int(size[1])
+    x0, y0, x1, y1 = (int(t) for t in box)
+    xs, ys = peaks if peaks is not None else peaks_near(img, box)
+    horiz = _pair(xs, W, x0, x1, x0 - SEARCH, x0 + SEARCH)
+    vert = _pair(ys, H, y0, y1, y0 - SEARCH, y0 + SEARCH)
+    if horiz is None or vert is None:
+        return None
+    return (horiz[0], vert[0], horiz[1], vert[1])
+
+
 def complete(img: np.ndarray, box, rect, size, peaks=None):
     """Достроить/уточнить рамку по размеру листа.
 
@@ -489,3 +548,60 @@ def complete(img: np.ndarray, box, rect, size, peaks=None):
         mid = (t + b) / 2
         t, b = int(round(mid - H / 2)), int(round(mid + H / 2))
     return (int(l), int(t), int(r), int(b))
+
+
+def size_from_peaks(img: np.ndarray, boxes, th=None) -> tuple:
+    """Размер рамок листа по расстояниям между пиками линий.
+
+    Работает даже там, где маска оттенков не даёт ни одного замкнутого
+    прямоугольника (линии тоньше 1 px, рисунок почти касается рамки):
+    берём ближайший пик слева и справа от бокса, считаем расстояние и
+    возвращаем медиану — размер рамок листа одинаковый.
+    """
+    from frame_rect import tophat
+    th = th if th is not None else tophat(img)
+    ws, hh = [], []
+    for b in boxes:
+        xs, ys = peaks_near(img, b, th=th)
+        x0, y0, x1, y1 = (int(v) for v in b)
+        left = [c for c in xs if c <= x0 + SEARCH and c >= x0 - SEARCH]
+        right = [c for c in xs if c >= x1 - SEARCH and c <= x1 + SEARCH]
+        top = [c for c in ys if c <= y0 + SEARCH and c >= y0 - SEARCH]
+        bot = [c for c in ys if c >= y1 - SEARCH and c <= y1 + SEARCH]
+        if left and right:
+            ws.append(min(right) - max(left))
+        if top and bot:
+            hh.append(min(bot) - max(top))
+    def med(vals):
+        if len(vals) < 3:
+            return None
+        v = np.array(vals)
+        lo, hi = np.percentile(v, 25), np.percentile(v, 75)
+        core = v[(v >= lo) & (v <= hi)]
+        return int(round(float(np.median(core if core.size else v))))
+    return med(ws), med(hh)
+
+
+def sheet_rects(img: np.ndarray, boxes) -> tuple[list, tuple, list]:
+    """Рамки всего листа: (прямоугольники, размер листа, палитра).
+
+    Порядок: палитра оттенков -> размер рамок листа -> пары сторон ровно по
+    этому размеру. Пара сторон вместо четырёх независимых — ключ к точности:
+    сторона не может «уехать» на соседний пик.
+    """
+    from frame_rect import tophat
+    shades = palette(img)
+    m = mask(img, shades)
+    hs, vs = segments(m)
+    size = _sheet_size(img, boxes, hs, vs)
+    th = tophat(img)
+    if not size or not size[0] or not size[1]:
+        alt = size_from_peaks(img, boxes, th)
+        size = (size[0] or alt[0], size[1] or alt[1])
+    out = []
+    for b in boxes:
+        r = locate(img, b, size, peaks_near(img, b, th=th))
+        if r is None:
+            r = complete(img, b, find_rect(img, b, shades, hs, vs), size)
+        out.append(r)
+    return out, size, shades
