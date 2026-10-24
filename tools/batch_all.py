@@ -499,14 +499,19 @@ def process_sheet(path: str, outroot: str, nslots: int | None,
     os.makedirs(outdir, exist_ok=True)
 
     made, noise_before, noise_after = 0, 0.0, 0.0
+    by_frame, by_scan = 0, 0        # кем найден вырез: рамкой или старым сканом
+    frame_px = None                 # измеренный размер рамок этого листа
     for k, box in enumerate(mine):
         rect = None
         if cut == "inner":
             # основной путь — рамка; если её не нашли, старый локальный скан
             g = grid[k] if grid and k < len(grid) else None
             rect = _grid_crop(img, None, g)
-            if rect is None:
+            if rect is not None:
+                by_frame += 1
+            else:
                 rect = _inner_scan(img, box)
+                by_scan += 1
             crop = img[rect[1]:rect[3], rect[0]:rect[2]]
         elif cut == "corner":
             cb = corner_box(img, box)
@@ -543,9 +548,16 @@ def process_sheet(path: str, outroot: str, nslots: int | None,
         noise_after += C.fill_noise(clean)
         made += 1
 
+    if grid is not None and cut == "inner":
+        try:
+            frame_px = f"{_size[0]}x{_size[1]}" if _size else ""
+        except NameError:
+            frame_px = ""
     dt = time.time() - t0
     return {"sheet": os.path.relpath(path, ROOT), "folder": folder,
             "slots": made,
+            "by_frame": by_frame, "by_scan": by_scan,
+            "frame_px": frame_px or "",
             "noise_before": round(noise_before / max(made, 1), 2),
             "noise_after": round(noise_after / max(made, 1), 2),
             "sec": round(dt, 1)}
@@ -671,6 +683,7 @@ def main() -> int:
     csv_path = os.path.join(ROOT, "samples", "batch_summary.csv")
     with open(csv_path, "w", newline="", encoding="utf-8") as f:
         w = csv.DictWriter(f, fieldnames=["sheet", "folder", "slots",
+                                          "by_frame", "by_scan", "frame_px",
                                           "noise_before", "noise_after", "sec"])
         w.writeheader()
         for r in rows:
@@ -679,6 +692,12 @@ def main() -> int:
     total = sum(r.get("slots", 0) for r in rows)
     print(f"готово: {total} иконок с {len(rows)} листов за "
           f"{(time.time() - t0) / 60:.1f} мин -> {args.out}")
+    if args.cut == "inner":
+        fr = sum(r.get("by_frame", 0) for r in rows)
+        sc = sum(r.get("by_scan", 0) for r in rows)
+        if fr or sc:
+            print(f"рамка: {fr} слотов по структуре листа, "
+                  f"{sc} запасным локальным сканом")
     print(f"отчёт: {csv_path}")
     return 0
 

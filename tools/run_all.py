@@ -75,6 +75,13 @@ def check_env(sr: str = "anime") -> None:
         log("    pip install --force-reinstall opencv-contrib-python-headless")
         sys.exit(1)
     log("  dnn_superres: есть")
+    sys.path.insert(0, HERE)
+    try:
+        import frame_struct      # noqa: F401
+    except ImportError as e:
+        log(f"  ОШИБКА: не загружается детектор рамки tools/frame_struct.py ({e})")
+        sys.exit(1)
+    log("  детектор рамки: frame_struct (структура листа)")
     if sr == "anime":
         try:
             import gpu_check
@@ -150,6 +157,8 @@ def main() -> int:
     if args.smooth:
         base += ["--smooth"]
 
+    log(f"  рамка: палитра оттенков листа -> размер рамок листа -> пара сторон"
+        f" ровно по размеру (рез за линией)")
     run([sys.executable, os.path.join(HERE, "fetch_models.py")]
         + (["--all"] if args.smooth else []),
         "2/5  Модели апскейла")
