@@ -20,3 +20,6 @@ icons_cut/
 run_log.txt
 .venv/
 gpu_check.txt
+
+# доведённые одиночные иконки (tools/enhance_icon.py); примеры — в samples/enhanced/
+/enhanced/
